@@ -25,6 +25,7 @@ import type { DetailTable, PeerRow } from '@/lib/scrapers/screener-detail'
 import { ensureStockDetail } from '@/lib/stocks'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
+import { ScrollToTop } from './scroll-to-top'
 import { Sidebar, type SidebarItem } from './sidebar'
 
 export const dynamic = 'force-dynamic'
@@ -271,7 +272,7 @@ export default async function StockPage({ params }: Props) {
   ]
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-xs text-slate-200 antialiased">
+    <div className="flex min-h-screen flex-col bg-[#070b14] text-xs text-slate-200 antialiased">
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[#1b263b] bg-[#0b1220] px-4 py-2">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
@@ -292,7 +293,7 @@ export default async function StockPage({ params }: Props) {
         </form>
       </header>
 
-      <div className="flex items-start">
+      <div className="flex flex-1 items-start">
         <Sidebar items={sidebarItems} activeSymbol={view.symbol} />
 
         <main className="min-w-0 flex-1 space-y-3 bg-[#080c16] px-4 py-3">
@@ -470,6 +471,7 @@ export default async function StockPage({ params }: Props) {
           </section>
         </main>
       </div>
+      <ScrollToTop />
     </div>
   )
 }

@@ -162,6 +162,13 @@
   }
 }
 
+/* The dashboard is always dark, so pin the canvas regardless of OS scheme.
+   Unlayered so it wins over @layer base's bg-background. */
+html,
+body {
+  background-color: #050b14;
+}
+
 /* Dark scrollbars to match the dashboard chrome (WebKit + Firefox). */
 html {
   scrollbar-width: thin;

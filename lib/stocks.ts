@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { cleanSymbol } from '@/lib/scrapers/screener'
 import { isScreenerDetail } from '@/lib/stock-detail'
-import { scrapeScreenerCompany, type ScrapedCompany } from '@/lib/scrapers/resolve'
+import { scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
 
 export type StockSearchHit = {
   symbol: string
@@ -80,17 +81,20 @@ function loadStockWithDetail(symbol: string): Promise<StockWithDetail | null> {
 }
 
 /**
- * Load a saved stock and its latest snapshot. If the snapshot predates full
- * detail parsing (rawData is not a ScreenerDetail), re-scrape the company,
- * persist it, and return the refreshed row so the dashboard can render.
+ * Load a saved stock and its latest snapshot. When the symbol is not saved yet
+ * (e.g. a peer-comparison link to a company we have never scraped), scrape it
+ * on demand, persist it, and return it. When a saved snapshot predates full
+ * detail parsing (rawData is not a ScreenerDetail), re-scrape the company and
+ * return the refreshed row so the dashboard can render.
+ *
+ * Returns null only when the symbol is malformed or does not exist on the
+ * source — those are the cases that should surface as a 404. Concurrent
+ * requests for the same symbol share one in-flight scrape (per-instance job
+ * lock) so a page render never fans out into duplicate upstream calls.
  */
-export async function ensureStockDetail(symbol: string): Promise<StockWithDetail | null> {
-  const stock = await loadStockWithDetail(symbol)
-  if (!stock) return null
+const inflightImports = new Map<string, Promise<StockWithDetail | null>>()
 
-  const rawData = stock.fundamentals[0]?.rawData
-  if (isScreenerDetail(rawData) && rawData.peers != null) return stock
-
+async function refreshStock(symbol: string, stock: StockWithDetail): Promise<StockWithDetail> {
   try {
     const company = await scrapeScreenerCompany(symbol)
     if (!company) return stock
@@ -100,4 +104,38 @@ export async function ensureStockDetail(symbol: string): Promise<StockWithDetail
     console.error(`[stocks] failed to refresh detail for ${symbol}`, error)
     return stock
   }
+}
+
+function importStock(symbol: string): Promise<StockWithDetail | null> {
+  const pending = inflightImports.get(symbol)
+  if (pending) return pending
+
+  const task = (async () => {
+    try {
+      const company = await scrapeScreenerSymbol(symbol)
+      if (!company) return null
+      await upsertStockFromScrape(company)
+      return (await loadStockWithDetail(company.symbol)) ?? (await loadStockWithDetail(symbol))
+    } catch (error) {
+      console.error(`[stocks] failed to import ${symbol}`, error)
+      return null
+    } finally {
+      inflightImports.delete(symbol)
+    }
+  })()
+
+  inflightImports.set(symbol, task)
+  return task
+}
+
+export async function ensureStockDetail(rawSymbol: string): Promise<StockWithDetail | null> {
+  const symbol = cleanSymbol(rawSymbol)
+  if (!symbol) return null
+
+  const stock = await loadStockWithDetail(symbol)
+  if (!stock) return importStock(symbol)
+
+  const rawData = stock.fundamentals[0]?.rawData
+  if (isScreenerDetail(rawData) && rawData.peers != null) return stock
+  return refreshStock(symbol, stock)
 }

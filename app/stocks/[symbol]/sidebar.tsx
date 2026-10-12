@@ -88,7 +88,7 @@ export function Sidebar({ items, activeSymbol }: { items: SidebarItem[]; activeS
   }
 
   return (
-    <aside className="sticky top-[53px] flex h-[calc(100vh-53px)] w-[280px] shrink-0 flex-col border-r border-[#1a2539] bg-[#090f1a]">
+    <aside className="sticky top-[53px] flex max-h-[calc(100vh-53px)] w-[280px] shrink-0 flex-col self-start border-r border-[#1a2539] bg-[#090f1a]">
       <div className="border-b border-[#182338] bg-[#0c1322] p-2">
         <div className="relative">
           <input

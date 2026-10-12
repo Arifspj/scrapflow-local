@@ -107,12 +107,11 @@ export function deriveFundamentals(detail: ScreenerDetail): ParsedFundamental {
 }
 
 /**
- * Fetch and parse a screener company page (authenticated when credentials are
- * configured). Resolves the query first so partial names work, then falls back
- * to treating the query itself as a symbol.
+ * Fetch and parse a screener company page. `hit` carries the resolved search
+ * result (used for the display name and canonical URL); when it is null the
+ * query itself is treated as a symbol.
  */
-export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompany | null> {
-  const hit = await resolveScreenerCompany(query)
+async function buildCompany(hit: ScreenerSearchResult | null, query: string): Promise<ScrapedCompany | null> {
   const symbol = (hit ? symbolFromCompanyHref(hit.url) : null) ?? cleanSymbol(query)
   if (!symbol) return null
 
@@ -137,6 +136,40 @@ export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompa
     parserVersion: base.parserVersion,
     warnings: base.warnings,
   }
+}
+
+/**
+ * Fetch and parse a screener company page (authenticated when credentials are
+ * configured). Resolves the query first so partial names work, then falls back
+ * to treating the query itself as a symbol.
+ */
+export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompany | null> {
+  return buildCompany(await resolveScreenerCompany(query), query)
+}
+
+/**
+ * Look up an exact ticker symbol through screener's search API. Unlike
+ * resolveScreenerCompany this does no name/typo fallback, so a bogus symbol
+ * (e.g. a mistyped URL) resolves to null instead of importing a random company.
+ */
+export async function resolveScreenerSymbol(symbol: string): Promise<ScreenerSearchResult | null> {
+  const clean = cleanSymbol(symbol)
+  if (!clean) return null
+  const results = await searchScreener(clean)
+  return results.find((result) => symbolFromCompanyHref(result.url) === clean) ?? null
+}
+
+/**
+ * Import a company by its ticker symbol (used when a stock detail page is
+ * opened for a symbol that has not been saved yet). Confirms the symbol exists
+ * upstream before scraping, so genuinely invalid symbols stay 404s.
+ */
+export async function scrapeScreenerSymbol(symbol: string): Promise<ScrapedCompany | null> {
+  const clean = cleanSymbol(symbol)
+  if (!clean) return null
+  const hit = await resolveScreenerSymbol(clean)
+  if (!hit) return null
+  return buildCompany(hit, clean)
 }
 
 const recentHits = new Map<string, number[]>()
