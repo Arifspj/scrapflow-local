@@ -1,6 +1,8 @@
 import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
 import { computePiotroskiScore } from './piotroski'
 import { computeQuarterGrowth } from './growth'
+import { computeQuality, type QualityResult } from './quality'
+import { computeScore, type ScoreBreakdown } from './score'
 import type { DetailRow, DetailTable, IndustryLink, ScreenerDetail } from './scrapers/screener-detail'
 
 export function toNumber(value: unknown): number | null {
@@ -142,6 +144,14 @@ export function deriveScore(roce: number | null, roe: number | null): number | n
   return Math.round(total / parts.length)
 }
 
+/** Last finite value of a chronological series (right-most reported period). */
+function latestValue(values: number[]): number | null {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (Number.isFinite(values[index])) return values[index]
+  }
+  return null
+}
+
 export function capCategory(marketCap: number | null): string | null {
   if (marketCap == null) return null
   if (marketCap >= 50000) return 'Large Cap'
@@ -238,7 +248,13 @@ export type StockView = {
   revenue: number | null
   netProfit: number | null
   eps: number | null
+  /** Latest annual operating profit margin (%), null when unavailable. */
+  opm: number | null
+  /** Latest annual borrowings ÷ total assets, using balance-sheet rows. */
+  debtToAssets: number | null
   score: number | null
+  scoreBreakdown: ScoreBreakdown | null
+  quality: QualityResult
   valuation: TradeLevels
   salesYoy: number | null
   profitYoy: number | null
@@ -316,7 +332,38 @@ export function buildStockView(
     sales: annualSales,
     operatingProfit: annualNumbers(detail?.profitLoss, 'operating profit'),
   })
-  const score = deriveScore(roce, roe)
+
+  const latestSales = latestValue(annualSales)
+  const latestOperatingProfit = latestValue(annualNumbers(detail?.profitLoss, 'operating profit'))
+  const opm = latestSales != null && latestSales > 0 && latestOperatingProfit != null ? (latestOperatingProfit / latestSales) * 100 : null
+
+  const borrowings = latestValue(annualNumbers(detail?.balanceSheet, 'borrowings'))
+  const totalAssets = latestValue(annualNumbers(detail?.balanceSheet, 'total assets'))
+  const debtToAssets = borrowings != null && totalAssets != null && totalAssets > 0 ? borrowings / totalAssets : null
+
+  const growth = computeQuarterGrowth(detail?.quarters)
+  const scoreBreakdown = computeScore(
+    { roce, roe, opm, salesYoy, profitYoy, cfoPat, debtToEquity, debtToAssets, pe, upside: valuation.upside },
+    latest?.capturedAt ?? new Date(),
+  )
+  const quality = computeQuality({
+    roce,
+    roe,
+    salesYoy,
+    profitYoy,
+    cfoPat,
+    debtToEquity,
+    debtToAssets,
+    piotroski: piotroskiResult.score,
+    pe,
+    netProfit,
+    marginOfSafety: valuation.marginOfSafety,
+    upside: valuation.upside,
+    intrinsic: valuation.intrinsic,
+    qoqSalesPct: growth?.qoq.sales.pct ?? null,
+    qoqProfitPct: growth?.qoq.netProfit.pct ?? null,
+  })
+  const score = scoreBreakdown.score
 
   return {
     symbol: stock.symbol,
@@ -335,7 +382,11 @@ export function buildStockView(
     revenue,
     netProfit,
     eps,
+    opm,
+    debtToAssets,
     score,
+    scoreBreakdown,
+    quality,
     valuation,
     salesYoy,
     profitYoy,
@@ -347,7 +398,7 @@ export function buildStockView(
     piotroskiMissing: piotroskiResult.missing,
     capCategory: capCategory(marketCap),
     industry: detail?.industry ?? [],
-    growth: computeQuarterGrowth(detail?.quarters),
+    growth,
     badges: buildBadges({ upside: valuation.upside, salesYoy, profitYoy, roce, debtToEquity }),
     capturedAt: latest?.capturedAt ?? null,
     sourceUrl: latest?.sourceUrl ?? detail?.sourceUrl ?? null,

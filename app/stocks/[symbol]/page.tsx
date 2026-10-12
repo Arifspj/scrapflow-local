@@ -15,6 +15,7 @@ import {
   type StockView,
 } from '@/lib/stock-detail'
 import { buildCopyMarkdown } from '@/lib/copy-data'
+import { financialCellTrend, TREND_TONE_CLASS } from '@/lib/financial-trend'
 import type { GrowthKey, GrowthPeriod, GrowthSummary } from '@/lib/growth'
 import {
   getMetricColorClass,
@@ -28,18 +29,20 @@ import { ensureStockDetail } from '@/lib/stocks'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataButton } from './copy-data-button'
+import { RefreshButton } from './refresh-button'
+import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
 import { Sidebar, type SidebarItem } from './sidebar'
 
 export const dynamic = 'force-dynamic'
 type Props = { params: Promise<{ symbol: string }> }
 
-const BADGE_TONE: Record<string, string> = {
+const QUALITY_TONE: Record<'good' | 'neutral', string> = {
   good: 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300',
-  warn: 'border-amber-500/50 bg-amber-950/40 text-amber-300',
-  info: 'border-cyan-500/50 bg-cyan-950/40 text-cyan-300',
   neutral: 'border-slate-600/50 bg-slate-800/40 text-slate-300',
 }
+
+const RISK_BADGE_TONE = 'border-rose-500/50 bg-rose-950/40 text-rose-300'
 
 function sliceTable(table: DetailTable | null | undefined, limit: number): DetailTable | null {
   if (!table) return null
@@ -63,12 +66,12 @@ function Kpi({ label, value, tone, title }: { label: string; value: string; tone
 
 function Card({ title, right, children, id }: { title: string; right?: ReactNode; children: ReactNode; id?: string }) {
   return (
-    <div id={id} className="flex h-full flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
+    <div id={id} className="flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
       <div className="flex items-center justify-between border-b border-[#1b263d] pb-1.5">
         <h3 className="text-xs font-bold text-white">{title}</h3>
         {right}
       </div>
-      <div className="mt-1 flex-1">{children}</div>
+      <div className="mt-1">{children}</div>
     </div>
   )
 }
@@ -154,11 +157,16 @@ function FinancialTable({ table, suffix = '' }: { table: DetailTable | null; suf
                 {row.label}
                 {suffix}
               </td>
-              {row.values.map((value, index) => (
-                <td key={index} className={`py-1 text-right ${index === row.values.length - 1 ? 'font-semibold text-white' : ''}`}>
-                  {value || '—'}
-                </td>
-              ))}
+              {row.values.map((value, index) => {
+                const isLast = index === row.values.length - 1
+                const trend = value ? financialCellTrend(table, row, index) : { tone: 'neutral' as const, note: null }
+                const toneClass = trend.tone !== 'neutral' ? TREND_TONE_CLASS[trend.tone] : isLast ? 'text-white' : 'text-slate-300'
+                return (
+                  <td key={index} title={trend.note ?? undefined} className={`py-1 text-right ${isLast ? 'font-semibold' : ''} ${toneClass}`}>
+                    {value || '—'}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>
@@ -361,9 +369,12 @@ export default async function StockPage({ params }: Props) {
           </Link>
           {stock.scanners[0] && <span className="rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400">{stock.scanners[0].scanner.name}</span>}
         </div>
-        <form action="/" method="get" className="relative w-80">
-          <input name="q" placeholder="Search company name or symbol..." className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-3 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none" />
-        </form>
+        <div className="flex items-center gap-2">
+          <form action="/" method="get" className="relative w-80">
+            <input name="q" placeholder="Search company name or symbol..." className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-3 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none" />
+          </form>
+          <RefreshButton symbol={view.symbol} />
+        </div>
       </header>
 
       <div className="flex items-start">
@@ -413,15 +424,25 @@ export default async function StockPage({ params }: Props) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-2.5">
-              {view.badges.length ? (
-                view.badges.map((badge) => (
-                  <span key={badge.label} className={`rounded border px-2.5 py-0.5 text-2xs font-bold uppercase tracking-wider ${BADGE_TONE[badge.tone]}`}>
-                    {badge.label}
-                  </span>
-                ))
-              ) : (
-                <span className="text-2xs text-slate-500">No analytics available yet.</span>
-              )}
+              <span
+                className={`rounded border px-2.5 py-0.5 text-2xs font-bold uppercase tracking-wider ${QUALITY_TONE[view.quality.primary.tone]}`}
+                title={
+                  [
+                    view.quality.primary.criteriaPassed.length ? `Met: ${view.quality.primary.criteriaPassed.join(', ')}` : null,
+                    view.quality.primary.criteriaMissing.length ? `Not met / unavailable: ${view.quality.primary.criteriaMissing.join(', ')}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || undefined
+                }
+              >
+                {view.quality.primary.label}
+              </span>
+              {view.quality.risks.map((risk) => (
+                <span key={risk.kind} className={`rounded border px-2 py-0.5 text-2xs font-bold uppercase tracking-wider ${RISK_BADGE_TONE}`} title={risk.reasons.join(' · ')}>
+                  ⚠ {risk.label}
+                </span>
+              ))}
+              <ScoreBadge breakdown={view.scoreBreakdown} />
               {view.industry.length > 0 && (
                 <nav aria-label="Industry classification" className="ms-auto flex flex-wrap items-center gap-1 text-2xs text-slate-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-3 text-cyan-400" aria-hidden="true">
@@ -432,9 +453,9 @@ export default async function StockPage({ params }: Props) {
                     <Fragment key={level.level}>
                       {index > 0 && <span aria-hidden="true">›</span>}
                       {level.url ? (
-                        <a href={level.url} target="_blank" rel="noreferrer" className="rounded px-1 py-0.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-cyan-300" title={level.level}>
+                        <Link href={level.url} className="rounded px-1 py-0.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-cyan-300" title={level.level}>
                           {level.name}
-                        </a>
+                        </Link>
                       ) : (
                         <span className="rounded px-1 py-0.5 text-slate-300" title={level.level}>{level.name}</span>
                       )}
@@ -445,13 +466,13 @@ export default async function StockPage({ params }: Props) {
             </div>
           </section>
 
-          <section className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
+          <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
             {metrics.map((metric) => (
               <Kpi key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
             ))}
           </section>
 
-          <section aria-label="Growth" className="grid auto-rows-fr grid-cols-1 gap-3 md:grid-cols-2">
+          <section aria-label="Growth" className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Card title="Quarter on Quarter (QoQ)">
               <GrowthPanel
                 growth={growth?.qoq ?? null}
@@ -470,24 +491,24 @@ export default async function StockPage({ params }: Props) {
             </Card>
           </section>
 
-          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="h-full lg:col-span-4">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="lg:col-span-4">
               <Card title="Quarterly Trend (₹ Cr)">
                 <QuarterlyBarChart chart={quarterlyChart} />
               </Card>
             </div>
-            <div className="h-full lg:col-span-4">
+            <div className="lg:col-span-4">
               <Card title="Annual Profit Trend (₹ Cr)">
                 <ProfitLineChart chart={annualChart} />
               </Card>
             </div>
-            <div className="h-full lg:col-span-4">
+            <div className="lg:col-span-4">
               <RoceCalculator roce={view.roce} />
             </div>
           </section>
 
-          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="h-full lg:col-span-4">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="lg:col-span-4">
               <Card title="Intrinsic Value">
                 <div className="grid grid-cols-3 gap-2 py-3 text-center">
                   <div>
@@ -519,23 +540,23 @@ export default async function StockPage({ params }: Props) {
                 </div>
               </Card>
             </div>
-            <div className="h-full lg:col-span-4">
+            <div className="lg:col-span-4">
               <Card title="Valuation Metrics">
                 <ValuationTable view={view} />
               </Card>
             </div>
-            <div className="h-full lg:col-span-4">
+            <div className="lg:col-span-4">
               <TradeCalculator entry={view.price} />
             </div>
           </section>
 
-          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="h-full lg:col-span-6">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="lg:col-span-6">
               <Card title="Quarterly Results (₹ Cr)">
                 <FinancialTable table={quartersTable} />
               </Card>
             </div>
-            <div className="h-full lg:col-span-6 space-y-3">
+            <div className="lg:col-span-6 space-y-3">
               <Card title="Annual Profit & Loss (₹ Cr)">
                 <FinancialTable table={annualTable} />
               </Card>
@@ -545,8 +566,8 @@ export default async function StockPage({ params }: Props) {
             </div>
           </section>
 
-          <section className="grid auto-rows-fr grid-cols-1 gap-3 pb-2 lg:grid-cols-12">
-            <div className="h-full lg:col-span-5">
+          <section className="grid grid-cols-1 gap-3 pb-2 lg:grid-cols-12">
+            <div className="lg:col-span-5">
               <Card title="Shareholding Pattern" id="shareholding">
                 {shareholding ? (
                   <table className="w-full text-left text-2xs">
@@ -576,7 +597,7 @@ export default async function StockPage({ params }: Props) {
                 )}
               </Card>
             </div>
-            <div className="h-full lg:col-span-7">
+            <div className="lg:col-span-7">
               <Card title="Peer Comparison" id="peers">
                 <PeerComparison view={view} />
               </Card>

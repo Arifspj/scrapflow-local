@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { buildStockView } from '@/lib/stock-detail'
 
 export const scannerCategories = [
   ['Undervalued Scanner', 'Value-oriented screens and fundamental checks.'],
@@ -41,7 +42,9 @@ export type PublicRow = Snapshot['rows'][number]
 export function score(row: PublicRow) {
   const f = row.stock.fundamentals[0]
   if (!f) return null
-  return Math.round(([f.roce, f.roe].filter((value) => value != null).map(Number).reduce((sum, value) => sum + Math.min(value, 100), 0) / 2) || 0)
+  // Same validated scoring model that the sidebar and detail page use, so the
+  // search table never disagrees with the stock screen.
+  return buildStockView(row.stock, f).score
 }
 
 export function toCsv(rows: PublicRow[]) {

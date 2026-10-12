@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client'
+import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { cleanSymbol } from '@/lib/scrapers/screener'
 import { isScreenerDetail } from '@/lib/stock-detail'
-import { scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
+import { rateLimited, scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
 
 export type StockSearchHit = {
   symbol: string
@@ -141,4 +142,75 @@ export async function ensureStockDetail(rawSymbol: string): Promise<StockWithDet
   // hierarchy instead of rendering "Not available" forever.
   if (isScreenerDetail(rawData) && Array.isArray(rawData.industry) && rawData.peers != null) return stock
   return refreshStock(symbol, stock)
+}
+
+export type RefreshResult = {
+  ok: boolean
+  /** New snapshot time, only set when the fresh scrape was persisted. */
+  updatedAt: Date | null
+  /** Existing snapshot time kept after a failed refresh, when available. */
+  staleAt: Date | null
+  message: string
+}
+
+/**
+ * On-demand refresh for the header button: re-fetch the source, validate the
+ * symbol, persist the new snapshot, then revalidate the affected routes.
+ *
+ * Reliability guards requested for the public endpoint:
+ *  - only symbols already saved in the database can be refreshed,
+ *  - concurrent clicks for one symbol share a single upstream fetch (job lock),
+ *  - a per-symbol rate limit prevents unlimited scraping,
+ *  - a failed fetch never deletes the previously saved valid snapshot and it is
+ *    reported as a stale result rather than a success.
+ */
+const refreshLocks = new Map<string, Promise<RefreshResult>>()
+
+function staleFrom(stock: StockWithDetail): Date | null {
+  return stock.fundamentals[0]?.capturedAt ?? null
+}
+
+async function runRefresh(clean: string, existing: StockWithDetail): Promise<RefreshResult> {
+  try {
+    const company: ScrapedCompany | null = await scrapeScreenerSymbol(clean)
+    if (!company) {
+      return { ok: false, updatedAt: null, staleAt: staleFrom(existing), message: 'Symbol was not found on the source; the existing saved data was kept.' }
+    }
+    await upsertStockFromScrape(company)
+    const reloaded = await loadStockWithDetail(company.symbol)
+    const updatedAt = reloaded?.fundamentals[0]?.capturedAt ?? new Date()
+    revalidatePath(`/stocks/${encodeURIComponent(company.symbol)}`, 'page')
+    revalidatePath('/', 'page')
+    return { ok: true, updatedAt, staleAt: null, message: 'Fresh data fetched, validated and saved.' }
+  } catch (error) {
+    console.error(`[stocks] refresh failed for ${clean}`, error)
+    return {
+      ok: false,
+      updatedAt: null,
+      staleAt: staleFrom(existing),
+      message: error instanceof Error ? `Refresh failed (${error.message}); existing data was kept.` : 'Refresh failed; existing data was kept.',
+    }
+  }
+}
+
+export function refreshStockData(rawSymbol: string): Promise<RefreshResult> {
+  const clean = cleanSymbol(rawSymbol)
+  if (!clean) return Promise.resolve({ ok: false, updatedAt: null, staleAt: null, message: 'Invalid symbol.' })
+
+  const pending = refreshLocks.get(clean)
+  if (pending) return pending
+
+  const task = (async (): Promise<RefreshResult> => {
+    const existing = await loadStockWithDetail(clean)
+    if (!existing) {
+      return { ok: false, updatedAt: null, staleAt: null, message: 'No saved record for this symbol yet; open the stock page once to import it.' }
+    }
+    if (rateLimited(`refresh:${clean}`, 3, 60_000)) {
+      return { ok: false, updatedAt: null, staleAt: staleFrom(existing), message: 'Too many refresh requests for this symbol in the last minute; please wait and try again.' }
+    }
+    return runRefresh(clean, existing)
+  })().finally(() => refreshLocks.delete(clean))
+
+  refreshLocks.set(clean, task)
+  return task
 }
