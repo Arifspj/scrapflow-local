@@ -37,12 +37,29 @@ describe('computePiotroskiScore', () => {
     expect(result.missing).toEqual([])
   })
 
-  it('returns N/A when a signal is unavailable instead of guessing', () => {
+  it('returns a documented partial score when only the current-ratio signal is unavailable', () => {
     const { currentRatio: _currentRatio, ...withoutCurrentRatio } = BULLISH
     const result = computePiotroskiScore(withoutCurrentRatio)
-    expect(result.score).toBeNull()
-    expect(result.missing).toContain('current-ratio')
+    expect(result.score).toBe(8)
+    expect(result.totalCriteria).toBe(8)
+    expect(result.partial).toBe(true)
+    expect(result.missing).toEqual(['current-ratio'])
     expect(result.criteria).toHaveLength(9)
+  })
+
+  it('a partial score is never invented when more than current-ratio is missing', () => {
+    const withoutAssets = {
+      netProfit: [100, 120],
+      cashFromOps: [130, 160],
+      borrowings: [300, 250],
+      equityCapital: [100, 100],
+      sales: [900, 1100],
+      operatingProfit: [150, 200],
+    }
+    const result = computePiotroskiScore(withoutAssets as unknown as Parameters<typeof computePiotroskiScore>[0])
+    expect(result.score).toBeNull()
+    expect(result.partial).toBe(false)
+    expect(result.missing.length).toBeGreaterThan(1)
   })
 
   it('returns N/A when there is not enough history for change tests', () => {

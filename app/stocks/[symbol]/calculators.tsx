@@ -68,22 +68,27 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
   )
 }
 
-export function TradeCalculator({ entry, target }: { entry: number | null; target: number | null }) {
+export function TradeCalculator({ entry }: { entry: number | null }) {
   const [capital, setCapital] = useState('100000')
   const [risk, setRisk] = useState('1')
   const [entryPrice, setEntryPrice] = useState(entry != null ? String(entry) : '')
   const [stopLoss, setStopLoss] = useState(entry != null ? String(Math.round(entry * 0.95)) : '')
-  const [targetPrice, setTargetPrice] = useState(target != null ? String(Math.round(target)) : '')
+  const [targetOverride, setTargetOverride] = useState('')
 
   const cap = Number(capital)
   const riskAmount = (cap * Number(risk)) / 100
   const entryNum = Number(entryPrice)
   const stopNum = Number(stopLoss)
-  const targetNum = Number(targetPrice)
   const riskPerShare = entryNum - stopNum
+  // Default the target to a 3R reward (risk : reward 1 : 3) from entry/stop-loss.
+  // Clearing the Target field returns to the auto value; the user can override.
+  const autoTarget = riskPerShare > 0 ? entryNum + 3 * riskPerShare : NaN
+  const targetAuto = targetOverride.trim() === ''
+  const targetNum = targetAuto ? autoTarget : Number(targetOverride)
   const qty = riskPerShare > 0 ? Math.floor(riskAmount / riskPerShare) : 0
   const reward = qty > 0 && targetNum > entryNum ? qty * (targetNum - entryNum) : 0
   const rr = riskAmount > 0 && reward > 0 ? reward / riskAmount : NaN
+  const targetDisplay = targetAuto ? (Number.isFinite(autoTarget) && autoTarget > 0 ? String(Math.round(autoTarget)) : '') : targetOverride
 
   return (
     <div className="flex h-full flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
@@ -92,12 +97,25 @@ export function TradeCalculator({ entry, target }: { entry: number | null; targe
       </div>
       <div className="my-1 grid grid-cols-3 gap-2">
         {[
-          { label: 'Capital (₹)', value: capital, set: setCapital, tone: 'text-white' },
-          { label: 'Entry (₹)', value: entryPrice, set: setEntryPrice, tone: 'text-white' },
-          { label: 'Stop Loss (₹)', value: stopLoss, set: setStopLoss, tone: 'text-red-400' },
-          { label: 'Target (₹)', value: targetPrice, set: setTargetPrice, tone: 'text-emerald-400' },
+          { key: 'capital', label: 'Capital (₹)', value: capital, set: setCapital, tone: 'text-white' },
+          { key: 'entry', label: 'Entry (₹)', value: entryPrice, set: setEntryPrice, tone: 'text-white' },
+          { key: 'stop', label: 'Stop Loss (₹)', value: stopLoss, set: setStopLoss, tone: 'text-red-400' },
+          {
+            key: 'target',
+            label: (
+              <span className="flex items-center gap-1">
+                Target (₹)
+                {targetAuto && entryNum > stopNum && (
+                  <span className="rounded bg-cyan-900/70 px-1 py-px text-[8px] font-medium text-cyan-300">auto 1:3</span>
+                )}
+              </span>
+            ),
+            value: targetDisplay,
+            set: setTargetOverride,
+            tone: 'text-emerald-400',
+          },
         ].map((field) => (
-          <label key={field.label} className="block">
+          <label key={field.key} className="block">
             <span className="mb-0.5 block text-[10px] text-slate-400">{field.label}</span>
             <input value={field.value} onChange={(event) => field.set(event.target.value)} className={`w-full rounded border border-[#223352] bg-[#090f1d] px-1.5 py-1 font-mono text-2xs font-bold ${field.tone} focus:outline-none`} />
           </label>

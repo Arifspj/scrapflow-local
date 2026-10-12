@@ -245,6 +245,12 @@ export type StockView = {
   cfoPat: number | null
   workingCapitalDays: number | null
   piotroski: number | null
+  /** Criteria the partial/full Piotroski score is measured against. */
+  piotroskiTotal: number
+  /** True when the score only missed the source-unavailable current-ratio test. */
+  piotroskiPartial: boolean
+  /** Signals that could not be evaluated (documented, not fabricated). */
+  piotroskiMissing: string[]
   capCategory: string | null
   industry: IndustryLink[]
   growth: ReturnType<typeof computeQuarterGrowth>
@@ -301,7 +307,7 @@ export function buildStockView(
   const annualSales = annualNumbers(detail?.profitLoss, 'sales')
   const roceSeries = annualNumbers(detail?.ratios, 'roce')
   const valuation = deriveValuation({ price, eps, bookValue, sales: annualSales, roce: roceSeries })
-  const piotroski = computePiotroskiScore({
+  const piotroskiResult = computePiotroskiScore({
     netProfit: annualNumbers(detail?.profitLoss, 'net profit'),
     cashFromOps: annualNumbers(detail?.cashFlow, 'cash from operating'),
     totalAssets: annualNumbers(detail?.balanceSheet, 'total assets'),
@@ -309,7 +315,7 @@ export function buildStockView(
     equityCapital: annualNumbers(detail?.balanceSheet, 'equity capital'),
     sales: annualSales,
     operatingProfit: annualNumbers(detail?.profitLoss, 'operating profit'),
-  }).score
+  })
   const score = deriveScore(roce, roe)
 
   return {
@@ -335,7 +341,10 @@ export function buildStockView(
     profitYoy,
     cfoPat,
     workingCapitalDays,
-    piotroski,
+    piotroski: piotroskiResult.score,
+    piotroskiTotal: piotroskiResult.totalCriteria,
+    piotroskiPartial: piotroskiResult.partial,
+    piotroskiMissing: piotroskiResult.missing,
     capCategory: capCategory(marketCap),
     industry: detail?.industry ?? [],
     growth: computeQuarterGrowth(detail?.quarters),

@@ -49,9 +49,9 @@ function sliceTable(table: DetailTable | null | undefined, limit: number): Detai
   }
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone: MetricTone }) {
+function Kpi({ label, value, tone, title }: { label: string; value: string; tone: MetricTone; title?: string }) {
   return (
-    <div className="flex flex-col justify-between rounded-md border border-[#1d2b45] bg-[#0e1626] p-2">
+    <div className="flex flex-col justify-between rounded-md border border-[#1d2b45] bg-[#0e1626] p-2" title={title}>
       <span className="text-[10px] font-semibold uppercase text-slate-400">{label}</span>
       <div className="mt-1 flex items-baseline justify-between gap-1">
         <span className={`font-mono text-sm font-bold tabular-nums ${getMetricColorClass(tone)}`}>{value}</span>
@@ -322,14 +322,23 @@ export default async function StockPage({ params }: Props) {
   const copyMarkdown = buildCopyMarkdown(view)
   const growth = view.growth
 
-  const metrics: { label: string; value: string; tone: MetricTone }[] = [
+  const metrics: { label: string; value: string; tone: MetricTone; title?: string }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
     { label: 'Intrinsic Value', value: formatInr(view.valuation.intrinsic, 0), tone: getMetricStatus('marginOfSafety', view.valuation.marginOfSafety) },
     { label: 'ROCE', value: formatPct(view.roce), tone: getMetricStatus('roce', view.roce) },
     { label: 'ROE', value: formatPct(view.roe), tone: getMetricStatus('roe', view.roe) },
     { label: 'CFO / PAT', value: view.cfoPat != null ? view.cfoPat.toFixed(2) : '—', tone: getMetricStatus('cfoPat', view.cfoPat) },
-    { label: 'Piotroski F', value: view.piotroski != null ? `${view.piotroski}/9` : '—', tone: 'neutral' },
+    {
+      label: 'Piotroski F',
+      value: view.piotroski != null ? `${view.piotroski}/${view.piotroskiTotal}` : '—',
+      tone: view.piotroski != null && view.piotroskiPartial ? 'info' : 'neutral',
+      title: view.piotroskiPartial
+        ? 'Piotroski F-Score (partial): the current-ratio test is not exposed by screener standalone statements, so the score covers the ' + `${view.piotroskiTotal}` + ' evaluable criteria.'
+        : view.piotroski == null
+          ? 'Piotroski F-Score is unavailable for this company (insufficient history in source statements).'
+          : 'Piotroski F-Score (0–9) from annual standalone statements.',
+    },
     { label: 'Div. Yield', value: formatPct(view.dividendYield, 2), tone: getMetricStatus('dividendYield', view.dividendYield) },
     { label: 'D/E', value: view.debtToEquity != null ? view.debtToEquity.toFixed(2) : '—', tone: getMetricStatus('debtToEquity', view.debtToEquity) },
     { label: 'Working Capital', value: view.workingCapitalDays != null ? `${formatNum(view.workingCapitalDays, 0)} days` : '—', tone: 'neutral' },
@@ -516,7 +525,7 @@ export default async function StockPage({ params }: Props) {
               </Card>
             </div>
             <div className="h-full lg:col-span-4">
-              <TradeCalculator entry={view.price} target={view.valuation.intrinsic} />
+              <TradeCalculator entry={view.price} />
             </div>
           </section>
 

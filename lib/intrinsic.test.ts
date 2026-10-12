@@ -70,5 +70,15 @@ describe('marginOfSafety', () => {
     expect(marginOfSafety(120, 100)).toBeCloseTo(-20, 5)
     expect(marginOfSafety(null, 100)).toBeNull()
     expect(marginOfSafety(100, 0)).toBeNull()
+    expect(marginOfSafety(0, 100)).toBeNull()
+    expect(marginOfSafety(100, -5)).toBeNull()
+  })
+
+  it('is consistent with the HNDFDS-style example (price 572, IV 221)', () => {
+    // (IV − price) / IV × 100 = (221 − 572) / 221 × 100 ≈ −158.82%
+    const moS = marginOfSafety(572, 221)
+    expect(moS).toBeCloseTo(-158.82, 2)
+    // Upside (IV − price) / price × 100 ≈ −61.36%
+    expect(((221 - 572) / 572) * 100).toBeCloseTo(-61.36, 2)
   })
 })

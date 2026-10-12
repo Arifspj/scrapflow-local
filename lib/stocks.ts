@@ -136,6 +136,9 @@ export async function ensureStockDetail(rawSymbol: string): Promise<StockWithDet
   if (!stock) return importStock(symbol)
 
   const rawData = stock.fundamentals[0]?.rawData
-  if (isScreenerDetail(rawData) && rawData.peers != null) return stock
+  // Also refresh once for screenshots that predate the industry parser (their
+  // rawData has no `industry` array yet) so saved companies genuinely gain the
+  // hierarchy instead of rendering "Not available" forever.
+  if (isScreenerDetail(rawData) && Array.isArray(rawData.industry) && rawData.peers != null) return stock
   return refreshStock(symbol, stock)
 }

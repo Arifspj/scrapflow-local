@@ -1,10 +1,10 @@
 /**
  * Piotroski F-Score (0–9) computed from screener.in standalone financials.
  *
- * The classic nine binary tests are used. Two of them need data that a
- * screener.in standalone balance sheet does not expose (current assets /
- * current liabilities for the current-ratio test), so we return `null` and
- * report the missing signal instead of inventing a partial score.
+ * The classic nine binary tests are used. Screener.in standalone statements do
+ * not expose current assets / current liabilities (the current-ratio test), so
+ * when that is the only missing signal we report a documented partial score of
+ * 8 criteria. Any other gap returns `null` (N/A) instead of guessing.
  */
 
 export type PiotroskiCriterion = {
@@ -17,6 +17,10 @@ export type PiotroskiResult = {
   score: number | null
   criteria: PiotroskiCriterion[]
   missing: string[]
+  /** Number of criteria the score is measured against (9 full, 8 partial). */
+  totalCriteria: number
+  /** True when only the current-ratio signal was unavailable and we scored the rest. */
+  partial: boolean
 }
 
 export type PiotroskiInput = {
@@ -110,8 +114,22 @@ export function computePiotroskiScore(input: PiotroskiInput): PiotroskiResult {
   ]
 
   const missing = criteria.filter((criterion) => criterion.passed === null).map((criterion) => criterion.key)
-  if (missing.length) return { score: null, criteria, missing }
 
-  const score = criteria.reduce((total, criterion) => total + (criterion.passed ? 1 : 0), 0)
-  return { score, criteria, missing }
+  // Full score: all nine signals were measurable from the source statements.
+  if (missing.length === 0) {
+    const score = criteria.reduce((total, criterion) => total + (criterion.passed ? 1 : 0), 0)
+    return { score, criteria, missing, totalCriteria: 9, partial: false }
+  }
+
+  // Partial score: screener standalone statements do not expose current assets /
+  // current liabilities, so the current-ratio test is the only unavailable signal.
+  // This is an explicit, documented exception — never an invented value.
+  if (missing.length === 1 && missing[0] === 'current-ratio') {
+    const evaluable = criteria.filter((criterion) => criterion.passed !== null)
+    const score = evaluable.reduce((total, criterion) => total + (criterion.passed ? 1 : 0), 0)
+    return { score, criteria, missing, totalCriteria: evaluable.length, partial: true }
+  }
+
+  // Anything else (one or more tables missing, too little history) stays N/A.
+  return { score: null, criteria, missing, totalCriteria: 9, partial: false }
 }
