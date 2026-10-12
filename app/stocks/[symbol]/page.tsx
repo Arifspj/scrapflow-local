@@ -15,6 +15,7 @@ import {
   type StockView,
 } from '@/lib/stock-detail'
 import type { DetailTable } from '@/lib/scrapers/screener-detail'
+import { ensureStockDetail } from '@/lib/stocks'
 import { RoceCalculator, TradeCalculator } from './calculators'
 
 export const dynamic = 'force-dynamic'
@@ -225,10 +226,7 @@ function ValuationTable({ view }: { view: StockView }) {
 
 export default async function StockPage({ params }: Props) {
   const symbol = decodeURIComponent((await params).symbol).toUpperCase()
-  const stock = await prisma.stock.findUnique({
-    where: { symbol },
-    include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 }, scanners: { include: { scanner: true } } },
-  })
+  const stock = await ensureStockDetail(symbol)
   if (!stock) notFound()
 
   const related = await prisma.stock.findMany({

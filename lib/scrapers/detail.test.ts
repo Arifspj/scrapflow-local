@@ -6,6 +6,7 @@ import {
   buildChartSeries,
   deriveScore,
   deriveValuation,
+  isScreenerDetail,
   yoyPercent,
 } from '../stock-detail'
 
@@ -86,10 +87,16 @@ describe('stock-detail helpers', () => {
     expect(chart?.series[0].values).toEqual([2620, 3203])
   })
 
-  it('derives badges from the metrics', () => {
-    const badges = buildBadges({ upside: -23.6, salesYoy: 10, profitYoy: 197, roce: 21.6, debtToEquity: 0.4 })
+  it('derives badges from the metrics', () => {    const badges = buildBadges({ upside: -23.6, salesYoy: 10, profitYoy: 197, roce: 21.6, debtToEquity: 0.4 })
     expect(badges.map((badge) => badge.label)).toContain('Overvalued')
     expect(badges.map((badge) => badge.label)).toContain('Good Growth')
     expect(badges.map((badge) => badge.label)).toContain('Low Debt')
+  })
+
+  it('flags old-format rawData so the page can re-scrape it', () => {
+    const detail = parseScreenerDetail(HTML, 'x')
+    expect(isScreenerDetail(detail)).toBe(true)
+    expect(isScreenerDetail({ marketCap: 4160, peRatio: 19.6 })).toBe(false)
+    expect(isScreenerDetail(null)).toBe(false)
   })
 })

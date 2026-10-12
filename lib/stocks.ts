@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import type { ScrapedCompany } from '@/lib/scrapers/resolve'
+import { isScreenerDetail } from '@/lib/stock-detail'
+import { scrapeScreenerCompany, type ScrapedCompany } from '@/lib/scrapers/resolve'
 
 export type StockSearchHit = {
   symbol: string
@@ -65,4 +66,37 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
   })
 
   return { symbol: stock.symbol, companyName: stock.companyName }
+}
+
+const stockDetailInclude = {
+  fundamentals: { orderBy: { capturedAt: 'desc' as const }, take: 1 },
+  scanners: { include: { scanner: true } },
+} satisfies Prisma.StockInclude
+
+export type StockWithDetail = Prisma.StockGetPayload<{ include: typeof stockDetailInclude }>
+
+function loadStockWithDetail(symbol: string): Promise<StockWithDetail | null> {
+  return prisma.stock.findUnique({ where: { symbol }, include: stockDetailInclude })
+}
+
+/**
+ * Load a saved stock and its latest snapshot. If the snapshot predates full
+ * detail parsing (rawData is not a ScreenerDetail), re-scrape the company,
+ * persist it, and return the refreshed row so the dashboard can render.
+ */
+export async function ensureStockDetail(symbol: string): Promise<StockWithDetail | null> {
+  const stock = await loadStockWithDetail(symbol)
+  if (!stock) return null
+
+  if (isScreenerDetail(stock.fundamentals[0]?.rawData)) return stock
+
+  try {
+    const company = await scrapeScreenerCompany(symbol)
+    if (!company) return stock
+    await upsertStockFromScrape(company)
+    return (await loadStockWithDetail(symbol)) ?? stock
+  } catch (error) {
+    console.error(`[stocks] failed to refresh detail for ${symbol}`, error)
+    return stock
+  }
 }
