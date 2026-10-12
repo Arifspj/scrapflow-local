@@ -4,8 +4,10 @@ import { findRow, latestRowNumber, parsePeers, parseScreenerDetail } from './scr
 import {
   buildBadges,
   buildChartSeries,
+  buildStockView,
   deriveScore,
   deriveValuation,
+  formatIstTimestamp,
   isScreenerDetail,
   yoyPercent,
 } from '../stock-detail'
@@ -35,7 +37,7 @@ const HTML = `<!doctype html><html><body>
 </table></section>
 <section id="ratios"><table>
   <thead><tr><th></th><th>Mar 2025</th></tr></thead>
-  <tbody><tr><td>Working Capital Days</td><td>74</td></tr></tbody>
+  <tbody><tr><td>Working Capital Days</td><td>74</td></tr><tr><td>ROCE %</td><td>22</td></tr></tbody>
 </table></section>
 <section id="shareholding"><table>
   <thead><tr><th></th><th>Jun 2026</th></tr></thead>
@@ -73,11 +75,32 @@ describe('parseScreenerDetail', () => {
 describe('stock-detail helpers', () => {
   it('computes valuation, score and growth', () => {
     expect(deriveScore(21.6, 27.1)).toBe(24)
-    const valuation = deriveValuation({ price: 625, eps: 30.32, bookValue: 126, roce: 21.6 })
-    expect(valuation.fair).toBeCloseTo(454.8, 1)
+    const valuation = deriveValuation({ price: 625, eps: 30.32, bookValue: 126, sales: [2620, 3203], roce: [22] })
     expect(valuation.graham).toBeCloseTo(Math.sqrt(22.5 * 30.32 * 126), 1)
-    expect(valuation.upside).toBeLessThan(0)
+    expect(valuation.maxPe).toBeCloseTo(33.38, 1)
+    expect(valuation.maxPbv).toBeCloseTo(2.75, 2)
+    expect(valuation.intrinsic).toBeCloseTo(592.1, 0)
+    expect(valuation.marginOfSafety).toBeLessThan(0)
     expect(yoyPercent([2620, 3203])).toBeCloseTo(22.25, 1)
+  })
+
+  it('formats the live timestamp in IST', () => {
+    const formatted = formatIstTimestamp(new Date('2026-10-12T12:43:00Z'))
+    expect(formatted).toContain('12 Oct 2026')
+    expect(formatted).toMatch(/6:13\s*pm/i)
+    expect(formatted.endsWith('IST')).toBe(true)
+    expect(formatIstTimestamp(null)).toBe('—')
+  })
+
+  it('surfaces screener ratios (working capital days) and marks Piotroski N/A', () => {
+    const detail = parseScreenerDetail(HTML, 'x')
+    const view = buildStockView(
+      { symbol: 'TBZ', companyName: 'TBZ' },
+      { rawData: detail, capturedAt: new Date('2026-10-12T12:43:00Z'), marketCap: 4160, peRatio: 19.6 },
+    )
+    expect(view.workingCapitalDays).toBe(74)
+    expect(view.piotroski).toBeNull()
+    expect(view.valuation.intrinsic).not.toBeNull()
   })
 
   it('builds chart series and skips TTM', () => {

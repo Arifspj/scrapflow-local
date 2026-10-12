@@ -161,3 +161,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Dark scrollbars to match the dashboard chrome (WebKit + Firefox). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #23334f #0b1220;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1220;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #23334f;
+  border: 2px solid #0b1220;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #33486c;
+}
+
+::-webkit-scrollbar-corner {
+  background: #0b1220;
+}

@@ -1,4 +1,6 @@
-import type { DetailRow, DetailTable, ScreenerDetail } from '@/lib/scrapers/screener-detail'
+import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
+import { computePiotroskiScore } from './piotroski'
+import type { DetailRow, DetailTable, ScreenerDetail } from './scrapers/screener-detail'
 
 export function toNumber(value: unknown): number | null {
   if (value == null) return null
@@ -35,6 +37,21 @@ export function formatPct(value: number | null | undefined, digits = 1): string 
   return `${value.toFixed(digits)}%`
 }
 
+/** Screener.in quotes live NSE prices in Indian Standard Time. */
+export function formatIstTimestamp(date: Date | null | undefined): string {
+  if (!date) return '—'
+  const formatted = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date)
+  return `${formatted} IST`
+}
+
 export function isScreenerDetail(value: unknown): value is ScreenerDetail {
   return Boolean(value && typeof value === 'object' && ('topRatios' in value || 'profitLoss' in value))
 }
@@ -59,6 +76,19 @@ export function rowValues(table: DetailTable | null | undefined, label: string, 
   const values = row.values.map((value) => toNumber(value))
   const trimmed = limit ? values.slice(-limit) : values
   return trimmed.map((value) => value ?? 0)
+}
+
+/** Chronological annual values for a row, dropping any trailing TTM column. */
+export function annualNumbers(table: DetailTable | null | undefined, label: string): number[] {
+  const row = findDetailRow(table, label)
+  if (!row || !table) return []
+  const values: number[] = []
+  table.columns.forEach((column, index) => {
+    if (/ttm/i.test(column)) return
+    const value = toNumber(row.values[index])
+    if (value != null) values.push(value)
+  })
+  return values
 }
 
 export type ChartSeries = {
@@ -119,22 +149,46 @@ export function capCategory(marketCap: number | null): string | null {
   return 'Micro Cap'
 }
 
-export type TradeLevels = { fair: number | null; graham: number | null; noGrowth: number | null; conservative: number | null; upside: number | null }
+export type TradeLevels = {
+  /** Screener.in published Graham-number intrinsic value. */
+  intrinsic: number | null
+  /** Alias of `intrinsic`, kept for the sidebar/calculator/KPI consumers. */
+  fair: number | null
+  /** Classic Graham number sqrt(22.5 × EPS × BV), for reference. */
+  graham: number | null
+  maxPe: number
+  maxPbv: number
+  medianSalesGrowth: number | null
+  medianRoce: number | null
+  /** Intrinsic value vs price: (IV − price) / price. */
+  upside: number | null
+  /** Margin of safety vs intrinsic value: (IV − price) / IV. */
+  marginOfSafety: number | null
+}
 
 export function deriveValuation(input: {
   price: number | null
   eps: number | null
   bookValue: number | null
-  roce: number | null
+  sales: number[]
+  roce: number[]
 }): TradeLevels {
-  const { price, eps, bookValue, roce } = input
-  const fairMultiple = 15
-  const fair = eps != null && eps > 0 ? eps * fairMultiple : null
+  const { price, eps, bookValue, sales, roce } = input
+  const intrinsic = computeIntrinsicValue({ eps, bookValue, sales, roce })
   const graham = eps != null && bookValue != null && eps > 0 && bookValue > 0 ? Math.sqrt(22.5 * eps * bookValue) : null
-  const noGrowth = eps != null && eps > 0 ? eps * (roce != null && roce > 12 ? 12 : 10) : null
-  const conservative = fair != null ? fair * 0.9 : null
-  const upside = fair != null && price != null && price > 0 ? ((fair - price) / price) * 100 : null
-  return { fair, graham, noGrowth, conservative, upside }
+  const iv = intrinsic.intrinsicValue
+  const upside = iv != null && price != null && price > 0 ? ((iv - price) / price) * 100 : null
+  return {
+    intrinsic: iv,
+    fair: iv,
+    graham,
+    maxPe: intrinsic.maxPe,
+    maxPbv: intrinsic.maxPbv,
+    medianSalesGrowth: intrinsic.medianSalesGrowth,
+    medianRoce: intrinsic.medianRoce,
+    upside,
+    marginOfSafety: marginOfSafety(price, iv),
+  }
 }
 
 export type Badge = { label: string; tone: 'good' | 'warn' | 'info' | 'neutral' }
@@ -189,6 +243,7 @@ export type StockView = {
   profitYoy: number | null
   cfoPat: number | null
   workingCapitalDays: number | null
+  piotroski: number | null
   capCategory: string | null
   badges: Badge[]
   capturedAt: Date | null
@@ -240,7 +295,18 @@ export function buildStockView(
   const cfoPat = cfo != null && netProfit != null && netProfit !== 0 ? Number((cfo / netProfit).toFixed(2)) : null
   const workingCapitalDays = toNumber(lastNonEmpty(findDetailRow(detail?.ratios, 'working capital days')?.values))
 
-  const valuation = deriveValuation({ price, eps, bookValue, roce })
+  const annualSales = annualNumbers(detail?.profitLoss, 'sales')
+  const roceSeries = annualNumbers(detail?.ratios, 'roce')
+  const valuation = deriveValuation({ price, eps, bookValue, sales: annualSales, roce: roceSeries })
+  const piotroski = computePiotroskiScore({
+    netProfit: annualNumbers(detail?.profitLoss, 'net profit'),
+    cashFromOps: annualNumbers(detail?.cashFlow, 'cash from operating'),
+    totalAssets: annualNumbers(detail?.balanceSheet, 'total assets'),
+    borrowings: annualNumbers(detail?.balanceSheet, 'borrowings'),
+    equityCapital: annualNumbers(detail?.balanceSheet, 'equity capital'),
+    sales: annualSales,
+    operatingProfit: annualNumbers(detail?.profitLoss, 'operating profit'),
+  }).score
   const score = deriveScore(roce, roe)
 
   return {
@@ -266,6 +332,7 @@ export function buildStockView(
     profitYoy,
     cfoPat,
     workingCapitalDays,
+    piotroski,
     capCategory: capCategory(marketCap),
     badges: buildBadges({ upside: valuation.upside, salesYoy, profitYoy, roce, debtToEquity }),
     capturedAt: latest?.capturedAt ?? null,

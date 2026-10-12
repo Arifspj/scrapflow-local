@@ -8,6 +8,7 @@ import {
   findDetailRow,
   formatCr,
   formatInr,
+  formatIstTimestamp,
   formatNum,
   formatPct,
   lastNonEmpty,
@@ -58,7 +59,7 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone: Metri
 
 function Card({ title, right, children, id }: { title: string; right?: ReactNode; children: ReactNode; id?: string }) {
   return (
-    <div id={id} className="flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
+    <div id={id} className="flex h-full flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
       <div className="flex items-center justify-between border-b border-[#1b263d] pb-1.5">
         <h3 className="text-xs font-bold text-white">{title}</h3>
         {right}
@@ -105,15 +106,19 @@ function FinancialTable({ table, suffix = '' }: { table: DetailTable | null; suf
 
 function ValuationTable({ view }: { view: StockView }) {
   const { valuation } = view
+  const mosTone = getMetricStatus('marginOfSafety', valuation.marginOfSafety)
   const peTone = getMetricStatus('pe', view.pe)
-  const upsideTone = getMetricStatus('marginOfSafety', valuation.upside)
+  const roceTone = getMetricStatus('roce', valuation.medianRoce)
   const rows: { label: string; value: string; tone: MetricTone }[] = [
     { label: 'Current Price', value: formatInr(view.price), tone: 'neutral' },
+    { label: 'Intrinsic Value', value: formatInr(valuation.intrinsic, 0), tone: mosTone },
+    { label: 'Margin of Safety', value: formatPct(valuation.marginOfSafety), tone: mosTone },
     { label: 'Graham Number', value: formatInr(valuation.graham), tone: 'info' },
-    { label: 'No-Growth Fair Value', value: formatInr(valuation.noGrowth), tone: 'info' },
-    { label: 'Conservative Fair Value', value: formatInr(valuation.conservative), tone: 'info' },
-    { label: 'P/E (fair 15)', value: formatNum(view.pe, 1), tone: peTone },
-    { label: 'Potential Upside', value: formatPct(valuation.upside), tone: upsideTone },
+    { label: 'Median Sales Growth (5Y)', value: formatPct(valuation.medianSalesGrowth), tone: 'neutral' },
+    { label: 'Max P/E (5Y growth × 1.5)', value: formatNum(valuation.maxPe, 1), tone: 'neutral' },
+    { label: 'Median ROCE (5Y)', value: formatPct(valuation.medianRoce), tone: roceTone },
+    { label: 'Max P/BV (5Y ROCE ÷ 8)', value: formatNum(valuation.maxPbv, 2), tone: 'neutral' },
+    { label: 'Stock P/E', value: formatNum(view.pe, 1), tone: peTone },
   ]
   return (
     <table className="w-full text-left text-xs">
@@ -249,17 +254,17 @@ export default async function StockPage({ params }: Props) {
     ['No. of Shareholders', findDetailRow(shareholding, 'no. of shareholders')],
   ] as const
 
-  const captured = view.capturedAt ? view.capturedAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+  const captured = formatIstTimestamp(view.capturedAt)
   const initials = view.symbol.slice(0, 3)
 
   const metrics: { label: string; value: string; tone: MetricTone }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
-    { label: 'Fair Value', value: formatInr(view.valuation.fair, 0), tone: getMetricStatus('marginOfSafety', view.valuation.upside) },
+    { label: 'Intrinsic Value', value: formatInr(view.valuation.intrinsic, 0), tone: getMetricStatus('marginOfSafety', view.valuation.marginOfSafety) },
     { label: 'ROCE', value: formatPct(view.roce), tone: getMetricStatus('roce', view.roce) },
     { label: 'ROE', value: formatPct(view.roe), tone: getMetricStatus('roe', view.roe) },
     { label: 'CFO / PAT', value: view.cfoPat != null ? view.cfoPat.toFixed(2) : '—', tone: getMetricStatus('cfoPat', view.cfoPat) },
-    { label: 'Piotroski F', value: '—', tone: 'neutral' },
+    { label: 'Piotroski F', value: view.piotroski != null ? `${view.piotroski}/9` : '—', tone: 'neutral' },
     { label: 'Div. Yield', value: formatPct(view.dividendYield, 2), tone: getMetricStatus('dividendYield', view.dividendYield) },
     { label: 'D/E', value: view.debtToEquity != null ? view.debtToEquity.toFixed(2) : '—', tone: getMetricStatus('debtToEquity', view.debtToEquity) },
     { label: 'Working Capital', value: view.workingCapitalDays != null ? `${formatNum(view.workingCapitalDays, 0)} days` : '—', tone: 'neutral' },
@@ -345,30 +350,30 @@ export default async function StockPage({ params }: Props) {
             </div>
           </section>
 
-          <section className="grid grid-cols-5 gap-2 lg:grid-cols-10">
+          <section className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
             {metrics.map((metric) => (
               <Kpi key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
             ))}
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-4">
+          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="h-full lg:col-span-4">
               <Card title="Quarterly Trend (₹ Cr)">
                 <QuarterlyBarChart chart={quarterlyChart} />
               </Card>
             </div>
-            <div className="lg:col-span-4">
+            <div className="h-full lg:col-span-4">
               <Card title="Annual Profit Trend (₹ Cr)">
                 <ProfitLineChart chart={annualChart} />
               </Card>
             </div>
-            <div className="lg:col-span-4">
+            <div className="h-full lg:col-span-4">
               <RoceCalculator roce={view.roce} />
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-4">
+          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="h-full lg:col-span-4">
               <Card title="Intrinsic Value">
                 <div className="grid grid-cols-3 gap-2 py-3 text-center">
                   <div>
@@ -376,18 +381,18 @@ export default async function StockPage({ params }: Props) {
                     <div className="mt-0.5 font-mono text-base font-black text-emerald-400">{formatInr(view.price)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-400">Fair Value</div>
-                    <div className="mt-0.5 font-mono text-base font-black text-cyan-400">{formatInr(view.valuation.fair)}</div>
+                    <div className="text-[10px] text-slate-400">Intrinsic Value</div>
+                    <div className="mt-0.5 font-mono text-base font-black text-cyan-400">{formatInr(view.valuation.intrinsic)}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-400">Upside</div>
-                    <div className={`mt-0.5 font-mono text-base font-black ${getMetricColorClass(getMetricStatus('marginOfSafety', view.valuation.upside))}`}>{formatPct(view.valuation.upside)}</div>
+                    <div className={`mt-0.5 font-mono text-base font-black ${getMetricColorClass(getMetricStatus('marginOfSafety', view.valuation.marginOfSafety))}`}>{formatPct(view.valuation.upside)}</div>
                   </div>
                 </div>
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] font-semibold">
-                    <span className="text-slate-300">Margin of Safety: {formatPct(view.valuation.upside)}</span>
-                    <span className="text-cyan-400">Fair ₹{formatNum(view.valuation.fair, 0)}</span>
+                    <span className="text-slate-300">Margin of Safety: {formatPct(view.valuation.marginOfSafety)}</span>
+                    <span className="text-cyan-400">IV ₹{formatNum(view.valuation.intrinsic, 0)}</span>
                   </div>
                   <div className="flex h-2 w-full overflow-hidden rounded-full bg-[#1b263d]">
                     <div className="h-full w-1/2 bg-cyan-500" />
@@ -395,28 +400,28 @@ export default async function StockPage({ params }: Props) {
                   </div>
                 </div>
                 <div className="mt-3 rounded border border-[#1b2d4b] bg-[#0a1220] p-2 text-2xs leading-snug">
-                  <div className="font-medium text-emerald-400">Fair value uses reported EPS × 15 (estimate)</div>
-                  <div className="text-slate-400">Not investment advice.</div>
+                  <div className="font-medium text-emerald-400">Screener.in Graham number: √(EPS × Book Value × max PE × max P/BV)</div>
+                  <div className="text-slate-400">max PE = 5-yr median sales growth × 1.5 (capped 8–100); max P/BV = 5-yr median ROCE ÷ 8 (capped 1–10). Not investment advice.</div>
                 </div>
               </Card>
             </div>
-            <div className="lg:col-span-4">
+            <div className="h-full lg:col-span-4">
               <Card title="Valuation Metrics">
                 <ValuationTable view={view} />
               </Card>
             </div>
-            <div className="lg:col-span-4">
-              <TradeCalculator entry={view.price} target={view.valuation.fair} />
+            <div className="h-full lg:col-span-4">
+              <TradeCalculator entry={view.price} target={view.valuation.intrinsic} />
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-6">
+          <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="h-full lg:col-span-6">
               <Card title="Quarterly Results (₹ Cr)">
                 <FinancialTable table={quartersTable} />
               </Card>
             </div>
-            <div className="lg:col-span-6 space-y-3">
+            <div className="h-full lg:col-span-6 space-y-3">
               <Card title="Annual Profit & Loss (₹ Cr)">
                 <FinancialTable table={annualTable} />
               </Card>
@@ -426,8 +431,8 @@ export default async function StockPage({ params }: Props) {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 pb-2 lg:grid-cols-12">
-            <div className="lg:col-span-5">
+          <section className="grid auto-rows-fr grid-cols-1 gap-3 pb-2 lg:grid-cols-12">
+            <div className="h-full lg:col-span-5">
               <Card title="Shareholding Pattern" id="shareholding">
                 {shareholding ? (
                   <table className="w-full text-left text-2xs">
@@ -457,7 +462,7 @@ export default async function StockPage({ params }: Props) {
                 )}
               </Card>
             </div>
-            <div className="lg:col-span-7">
+            <div className="h-full lg:col-span-7">
               <Card title="Peer Comparison" id="peers">
                 <PeerComparison view={view} />
               </Card>
