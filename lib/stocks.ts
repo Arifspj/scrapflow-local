@@ -54,7 +54,11 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
       debtToEquity: toDecimal(f.debtToEquity),
       revenue: toDecimal(f.revenue),
       netProfit: toDecimal(f.netProfit),
-      rawData: Object.keys(f).length ? (f as Prisma.InputJsonValue) : undefined,
+      rawData: company.detail
+        ? (company.detail as unknown as Prisma.InputJsonValue)
+        : Object.keys(f).length
+          ? (f as Prisma.InputJsonValue)
+          : undefined,
       sourceUrl: company.sourceUrl,
       parserVersion: company.parserVersion,
     },

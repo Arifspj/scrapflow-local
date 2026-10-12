@@ -1,46 +1,22 @@
-import {
-  cleanSymbol,
-  parseScreenerCompany,
-  parseScreenerSearchResults,
-  pickCompanyFromSearchResults,
-  symbolFromCompanyHref,
-  typoCandidates,
-  type ScreenerSearchResult,
-} from './screener'
+import { cleanSymbol, parseScreenerCompany, parseScreenerSearchResults, pickCompanyFromSearchResults, symbolFromCompanyHref, typoCandidates, type ScreenerSearchResult } from './screener'
+import { findRow, latestRowNumber, parseScreenerDetail, type ScreenerDetail } from './screener-detail'
+import { screenerFetchText } from './screener-auth'
 import type { ParsedFundamental } from './types'
 
 const SCREENER_BASE = 'https://www.screener.in'
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
 export type ScrapedCompany = {
   symbol: string
   companyName: string | null
   fundamentals: ParsedFundamental | null
+  detail: ScreenerDetail | null
   sourceUrl: string
   parserVersion: string
   warnings: string[]
 }
 
-async function fetchText(url: string, timeoutMs = 12000): Promise<string | null> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'user-agent': BROWSER_UA,
-        accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-    if (!response.ok) return null
-    return await response.text()
-  } catch {
-    return null
-  }
-}
-
-export async function searchScreenerCompanies(query: string): Promise<ScreenerSearchResult[]> {
-  const text = await fetchText(`${SCREENER_BASE}/api/company/search/?q=${encodeURIComponent(query)}`)
+async function searchScreener(query: string): Promise<ScreenerSearchResult[]> {
+  const text = await screenerFetchText(`${SCREENER_BASE}/api/company/search/?q=${encodeURIComponent(query)}`)
   if (!text) return []
   try {
     return parseScreenerSearchResults(JSON.parse(text))
@@ -49,25 +25,63 @@ export async function searchScreenerCompanies(query: string): Promise<ScreenerSe
   }
 }
 
+export async function searchScreenerCompanies(query: string): Promise<ScreenerSearchResult[]> {
+  return searchScreener(query)
+}
+
 /**
  * Resolve a free-text query (name / symbol / small typo) to a screener company.
  * Mirrors the extension: hit the search API, and fall back to bounded typo
  * variants when the raw query returns nothing (e.g. "reilance" -> "reliance").
  */
 export async function resolveScreenerCompany(query: string): Promise<ScreenerSearchResult | null> {
-  const direct = pickCompanyFromSearchResults(await searchScreenerCompanies(query), query)
+  const direct = pickCompanyFromSearchResults(await searchScreener(query), query)
   if (direct) return direct
 
   for (const candidate of typoCandidates(query)) {
-    const hit = pickCompanyFromSearchResults(await searchScreenerCompanies(candidate), candidate)
+    const hit = pickCompanyFromSearchResults(await searchScreener(candidate), candidate)
     if (hit) return hit
   }
   return null
 }
 
+export function deriveFundamentals(detail: ScreenerDetail): ParsedFundamental {
+  const { topRatios, profitLoss, balanceSheet } = detail
+  const fundamentals: ParsedFundamental = {
+    currentPrice: topRatios.currentPrice,
+    marketCap: topRatios.marketCap,
+    peRatio: topRatios.peRatio,
+    bookValue: topRatios.bookValue,
+    dividendYield: topRatios.dividendYield,
+    roce: topRatios.roce,
+    roe: topRatios.roe,
+  }
+
+  if (profitLoss) {
+    fundamentals.revenue = latestRowNumber(findRow(profitLoss, 'sales'), profitLoss.columns) ?? undefined
+    fundamentals.netProfit = latestRowNumber(findRow(profitLoss, 'net profit'), profitLoss.columns) ?? undefined
+    fundamentals.eps = latestRowNumber(findRow(profitLoss, 'eps'), profitLoss.columns) ?? undefined
+  }
+
+  if (balanceSheet) {
+    const borrowings = latestRowNumber(findRow(balanceSheet, 'borrowings'), balanceSheet.columns)
+    const equity = latestRowNumber(findRow(balanceSheet, 'equity capital'), balanceSheet.columns)
+    const reserves = latestRowNumber(findRow(balanceSheet, 'reserves'), balanceSheet.columns)
+    if (borrowings != null && equity != null && reserves != null && equity + reserves > 0) {
+      fundamentals.debtToEquity = Number((borrowings / (equity + reserves)).toFixed(2))
+    }
+  }
+
+  for (const key of Object.keys(fundamentals) as (keyof ParsedFundamental)[]) {
+    if (fundamentals[key] == null) delete fundamentals[key]
+  }
+  return fundamentals
+}
+
 /**
- * Fetch and parse a screener company page. Resolves the query first so partial
- * names work, then falls back to treating the query itself as a symbol.
+ * Fetch and parse a screener company page (authenticated when credentials are
+ * configured). Resolves the query first so partial names work, then falls back
+ * to treating the query itself as a symbol.
  */
 export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompany | null> {
   const hit = await resolveScreenerCompany(query)
@@ -75,21 +89,24 @@ export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompa
   if (!symbol) return null
 
   const sourceUrl = `${SCREENER_BASE}/company/${symbol}/`
-  const html = await fetchText(sourceUrl)
+  const html = await screenerFetchText(sourceUrl)
   if (!html) return null
 
-  const parsed = parseScreenerCompany(html, sourceUrl)
-  const resolved = parsed.symbols[0]
+  const base = parseScreenerCompany(html, sourceUrl)
+  const resolved = base.symbols[0]
   const finalSymbol = resolved?.symbol ?? symbol
-  if (!resolved && !parsed.fundamentals) return null
+  const detail = parseScreenerDetail(html, sourceUrl)
+  const fundamentals = deriveFundamentals(detail)
+  if (!resolved && !Object.keys(fundamentals).length) return null
 
   return {
     symbol: finalSymbol,
     companyName: resolved?.companyName ?? hit?.name ?? null,
-    fundamentals: parsed.fundamentals,
+    fundamentals: Object.keys(fundamentals).length ? fundamentals : null,
+    detail,
     sourceUrl,
-    parserVersion: parsed.parserVersion,
-    warnings: parsed.warnings,
+    parserVersion: base.parserVersion,
+    warnings: base.warnings,
   }
 }
 
