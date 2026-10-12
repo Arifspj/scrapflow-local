@@ -1,6 +1,7 @@
 import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
 import { computePiotroskiScore } from './piotroski'
-import type { DetailRow, DetailTable, ScreenerDetail } from './scrapers/screener-detail'
+import { computeQuarterGrowth } from './growth'
+import type { DetailRow, DetailTable, IndustryLink, ScreenerDetail } from './scrapers/screener-detail'
 
 export function toNumber(value: unknown): number | null {
   if (value == null) return null
@@ -245,6 +246,8 @@ export type StockView = {
   workingCapitalDays: number | null
   piotroski: number | null
   capCategory: string | null
+  industry: IndustryLink[]
+  growth: ReturnType<typeof computeQuarterGrowth>
   badges: Badge[]
   capturedAt: Date | null
   sourceUrl: string | null
@@ -334,6 +337,8 @@ export function buildStockView(
     workingCapitalDays,
     piotroski,
     capCategory: capCategory(marketCap),
+    industry: detail?.industry ?? [],
+    growth: computeQuarterGrowth(detail?.quarters),
     badges: buildBadges({ upside: valuation.upside, salesYoy, profitYoy, roce, debtToEquity }),
     capturedAt: latest?.capturedAt ?? null,
     sourceUrl: latest?.sourceUrl ?? detail?.sourceUrl ?? null,

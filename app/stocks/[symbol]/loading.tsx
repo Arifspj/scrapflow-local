@@ -10,7 +10,7 @@ function Card({ children, className = '' }: { children: ReactNode; className?: s
 
 export default function Loading() {
   return (
-    <div className="flex min-h-screen flex-col bg-[#070b14] text-xs text-slate-200 antialiased" aria-busy="true" aria-live="polite">
+    <div className="flex flex-col bg-[#070b14] text-xs text-slate-200 antialiased" aria-busy="true" aria-live="polite">
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[#1b263b] bg-[#0b1220] px-4 py-2">
         <div className="flex items-center gap-2">
           <div className="flex items-end gap-0.5 rounded-lg border border-cyan-800/40 bg-[#0e1e38] p-1.5">
@@ -26,7 +26,7 @@ export default function Loading() {
         <Bar className="h-8 w-80" />
       </header>
 
-      <div className="flex flex-1 items-start">
+      <div className="flex items-start">
         <aside className="sticky top-[53px] w-[280px] shrink-0 self-start border-r border-[#1a2539] bg-[#090f1a]">
           <div className="border-b border-[#182338] bg-[#0c1322] p-2">
             <Bar className="h-8 w-full" />

@@ -36,6 +36,14 @@ export type ScreenerTopRatios = {
   faceValue?: number
 }
 
+export type IndustryLevelName = 'broadSector' | 'sector' | 'broadIndustry' | 'industry'
+
+export type IndustryLink = {
+  level: IndustryLevelName
+  name: string | null
+  url: string | null
+}
+
 export type ScreenerDetail = {
   sourceUrl: string
   companyId: string | null
@@ -47,6 +55,8 @@ export type ScreenerDetail = {
   cashFlow: DetailTable | null
   ratios: DetailTable | null
   shareholding: { quarterly: DetailTable | null; yearly: DetailTable | null }
+  /** Screener's industry hierarchy, e.g. Healthcare > Pharma & Biotech > ... */
+  industry: IndustryLink[]
   /** null = never fetched, [] = fetched but empty/unavailable. */
   peers: PeerRow[] | null
   peersError: string | null
@@ -161,6 +171,24 @@ export function findRow(table: DetailTable | null, label: string): DetailRow | u
   return table.rows.find((row) => row.label.toLowerCase().startsWith(target))
 }
 
+const LEVEL_BY_TITLE: Record<string, IndustryLevelName> = {
+  'broad sector': 'broadSector',
+  sector: 'sector',
+  'broad industry': 'broadIndustry',
+  industry: 'industry',
+}
+
+/** Screener prints its classification as titled links inside the #peers header. */
+function parseIndustry($: cheerio.CheerioAPI): IndustryLink[] {
+  const out: IndustryLink[] = []
+  $('#peers p.sub a[title]').each((_, anchor) => {
+    const level = LEVEL_BY_TITLE[$(anchor).attr('title')?.replace(/\s+/g, ' ').trim().toLowerCase() ?? '']
+    if (!level || out.some((item) => item.level === level)) return
+    out.push({ level, name: textOf($(anchor)) || null, url: $(anchor).attr('href') ?? null })
+  })
+  return out
+}
+
 export function parseScreenerDetail(html: string, sourceUrl: string): ScreenerDetail {
   const $ = cheerio.load(html)
   const info = parseCompanyInfo($)
@@ -175,6 +203,7 @@ export function parseScreenerDetail(html: string, sourceUrl: string): ScreenerDe
     cashFlow: firstTable($, '#cash-flow'),
     ratios: firstTable($, '#ratios'),
     shareholding: parseShareholding($),
+    industry: parseIndustry($),
     peers: null,
     peersError: null,
   }

@@ -43,6 +43,20 @@ const HTML = `<!doctype html><html><body>
   <thead><tr><th></th><th>Jun 2026</th></tr></thead>
   <tbody><tr><td>Promoters +</td><td>74.12%</td></tr><tr><td>FIIs +</td><td>0.45%</td></tr></tbody>
 </table></section>
+<section id="quarters"><table>
+  <thead><tr><th></th><th>Mar 2025</th><th>Jun 2025</th><th>Sep 2025</th><th>Dec 2025</th></tr></thead>
+  <tbody>
+    <tr><td>Sales +</td><td>600</td><td>650</td><td>700</td><td>750</td></tr>
+    <tr><td>Operating Profit +</td><td>90</td><td>100</td><td>110</td><td>120</td></tr>
+    <tr><td>Net Profit +</td><td>60</td><td>65</td><td>70</td><td>75</td></tr>
+  </tbody>
+</table></section>
+<section id="peers"><div><h2>Peer comparison</h2><p class="sub">
+  <a href="/market/IN06/" target="_blank" title="Broad Sector">Healthcare</a>
+  <a href="/market/IN06/IN0601/" target="_blank" title="Sector">Healthcare</a>
+  <a href="/market/IN06/IN0601/IN060101/" target="_blank" title="Broad Industry">Pharmaceuticals &amp; Biotechnology</a>
+  <a href="/market/IN06/IN0601/IN060101/IN060101001/" target="_blank" title="Industry">Pharmaceuticals</a>
+</p></div></section>
 </body></html>`
 
 describe('parseScreenerDetail', () => {
@@ -92,6 +106,13 @@ describe('stock-detail helpers', () => {
     expect(formatIstTimestamp(null)).toBe('—')
   })
 
+  it('parses the industry hierarchy from the peers header', () => {
+    const detail = parseScreenerDetail(HTML, 'x')
+    expect(detail.industry.map((item) => item.level)).toEqual(['broadSector', 'sector', 'broadIndustry', 'industry'])
+    expect(detail.industry[0]).toMatchObject({ name: 'Healthcare', url: '/market/IN06/' })
+    expect(detail.industry[3]).toMatchObject({ name: 'Pharmaceuticals', url: '/market/IN06/IN0601/IN060101/IN060101001/' })
+  })
+
   it('surfaces screener ratios (working capital days) and marks Piotroski N/A', () => {
     const detail = parseScreenerDetail(HTML, 'x')
     const view = buildStockView(
@@ -114,6 +135,18 @@ describe('stock-detail helpers', () => {
     expect(badges.map((badge) => badge.label)).toContain('Overvalued')
     expect(badges.map((badge) => badge.label)).toContain('Good Growth')
     expect(badges.map((badge) => badge.label)).toContain('Low Debt')
+  })
+
+  it('derives QoQ/YoY growth and industry from quarters + peers in the view', () => {
+    const detail = parseScreenerDetail(HTML, 'x')
+    const view = buildStockView({ symbol: 'TBZ', companyName: 'TBZ' }, { rawData: detail })
+    expect(view.growth?.latest).toBe('Dec 2025')
+    expect(view.growth?.qoq.sales.pct).toBeCloseTo((750 / 700 - 1) * 100, 1)
+    expect(view.growth?.qoq.netProfit.pct).toBeCloseTo((75 / 70 - 1) * 100, 1)
+    expect(view.growth?.yoy.sales.pct).toBeNull()
+    expect(view.growth?.yoySame).toBeNull()
+    expect(view.industry).toHaveLength(4)
+    expect(view.industry[3]?.name).toBe('Pharmaceuticals')
   })
 
   it('flags old-format rawData so the page can re-scrape it', () => {

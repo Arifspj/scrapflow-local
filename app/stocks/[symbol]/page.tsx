@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
@@ -14,6 +14,8 @@ import {
   lastNonEmpty,
   type StockView,
 } from '@/lib/stock-detail'
+import { buildCopyMarkdown } from '@/lib/copy-data'
+import type { GrowthKey, GrowthPeriod, GrowthSummary } from '@/lib/growth'
 import {
   getMetricColorClass,
   getMetricStatus,
@@ -25,6 +27,7 @@ import type { DetailTable, PeerRow } from '@/lib/scrapers/screener-detail'
 import { ensureStockDetail } from '@/lib/stocks'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
+import { CopyDataButton } from './copy-data-button'
 import { ScrollToTop } from './scroll-to-top'
 import { Sidebar, type SidebarItem } from './sidebar'
 
@@ -66,6 +69,65 @@ function Card({ title, right, children, id }: { title: string; right?: ReactNode
         {right}
       </div>
       <div className="mt-1 flex-1">{children}</div>
+    </div>
+  )
+}
+
+function growthTone(pct: number | null): string {
+  if (pct == null) return 'text-slate-500'
+  if (pct > 0) return 'text-emerald-400'
+  if (pct < 0) return 'text-red-400'
+  return 'text-amber-400'
+}
+
+function GrowthRow({ label, period }: { label: string; period: GrowthPeriod }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-[#1a2b47] bg-[#0b1424] px-3 py-2">
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold text-slate-200">{label}</div>
+        <div className="truncate font-mono text-[9px] text-slate-500">
+          ₹ {formatNum(period.previous)} Cr → ₹ {formatNum(period.current)} Cr
+        </div>
+      </div>
+      <span className={`shrink-0 font-mono text-sm font-black tabular-nums ${growthTone(period.pct)}`}>
+        {period.pct != null ? `${period.pct >= 0 ? '+' : ''}${period.pct.toFixed(1)}%` : 'N/A'}
+      </span>
+    </div>
+  )
+}
+
+const GROWTH_ROWS: { label: string; key: GrowthKey }[] = [
+  { label: 'Sales', key: 'sales' },
+  { label: 'Operating Profit', key: 'operatingProfit' },
+  { label: 'Net Profit', key: 'netProfit' },
+]
+
+function GrowthPanel({
+  growth,
+  compare,
+  latest,
+  footnote,
+}: {
+  growth: Record<GrowthKey, GrowthPeriod> | null
+  compare: string | null
+  latest: string | null
+  footnote: string
+}) {
+  if (!growth) return <p className="py-8 text-center text-xs text-slate-500">Quarterly data not available for growth comparison.</p>
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-500">
+        <span>
+          Latest quarter: <span className="text-slate-300">{latest ?? '—'}</span>
+          {compare ? <> · vs <span className="text-slate-300">{compare}</span></> : null}
+        </span>
+        <span className="text-[9px]">{footnote}</span>
+      </div>
+      <div className="space-y-1.5">
+        {GROWTH_ROWS.map((row) => (
+          <GrowthRow key={row.key} label={row.label} period={growth[row.key]} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -257,6 +319,8 @@ export default async function StockPage({ params }: Props) {
 
   const captured = formatIstTimestamp(view.capturedAt)
   const initials = view.symbol.slice(0, 3)
+  const copyMarkdown = buildCopyMarkdown(view)
+  const growth = view.growth
 
   const metrics: { label: string; value: string; tone: MetricTone }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
@@ -272,7 +336,7 @@ export default async function StockPage({ params }: Props) {
   ]
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#070b14] text-xs text-slate-200 antialiased">
+    <div className="flex flex-col bg-[#070b14] text-xs text-slate-200 antialiased">
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[#1b263b] bg-[#0b1220] px-4 py-2">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
@@ -293,7 +357,7 @@ export default async function StockPage({ params }: Props) {
         </form>
       </header>
 
-      <div className="flex flex-1 items-start">
+      <div className="flex items-start">
         <Sidebar items={sidebarItems} activeSymbol={view.symbol} />
 
         <main className="min-w-0 flex-1 space-y-3 bg-[#080c16] px-4 py-3">
@@ -336,6 +400,7 @@ export default async function StockPage({ params }: Props) {
                     )}
                   </div>
                 </div>
+                <CopyDataButton text={copyMarkdown} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-2.5">
@@ -348,6 +413,26 @@ export default async function StockPage({ params }: Props) {
               ) : (
                 <span className="text-2xs text-slate-500">No analytics available yet.</span>
               )}
+              {view.industry.length > 0 && (
+                <nav aria-label="Industry classification" className="ms-auto flex flex-wrap items-center gap-1 text-2xs text-slate-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-3 text-cyan-400" aria-hidden="true">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  {view.industry.map((level, index) => (
+                    <Fragment key={level.level}>
+                      {index > 0 && <span aria-hidden="true">›</span>}
+                      {level.url ? (
+                        <a href={level.url} target="_blank" rel="noreferrer" className="rounded px-1 py-0.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-cyan-300" title={level.level}>
+                          {level.name}
+                        </a>
+                      ) : (
+                        <span className="rounded px-1 py-0.5 text-slate-300" title={level.level}>{level.name}</span>
+                      )}
+                    </Fragment>
+                  ))}
+                </nav>
+              )}
             </div>
           </section>
 
@@ -355,6 +440,25 @@ export default async function StockPage({ params }: Props) {
             {metrics.map((metric) => (
               <Kpi key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
             ))}
+          </section>
+
+          <section aria-label="Growth" className="grid auto-rows-fr grid-cols-1 gap-3 md:grid-cols-2">
+            <Card title="Quarter on Quarter (QoQ)">
+              <GrowthPanel
+                growth={growth?.qoq ?? null}
+                compare={growth?.qoqPrevious ?? null}
+                latest={growth?.latest ?? null}
+                footnote="Operating Profit is reported as 'Profit' in the source."
+              />
+            </Card>
+            <Card title="Year on Year (YoY)">
+              <GrowthPanel
+                growth={growth?.yoy ?? null}
+                compare={growth?.yoySame ?? null}
+                latest={growth?.latest ?? null}
+                footnote="Source: screener.in quarterly results."
+              />
+            </Card>
           </section>
 
           <section className="grid auto-rows-fr grid-cols-1 gap-3 lg:grid-cols-12">
