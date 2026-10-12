@@ -15,6 +15,7 @@ import {
   type StockView,
 } from '@/lib/stock-detail'
 import { buildCopyMarkdown } from '@/lib/copy-data'
+import type { BusinessBadge } from '@/lib/business-badges'
 import { financialCellTrend, TREND_TONE_CLASS } from '@/lib/financial-trend'
 import type { GrowthKey, GrowthPeriod, GrowthSummary } from '@/lib/growth'
 import {
@@ -43,6 +44,13 @@ const QUALITY_TONE: Record<'good' | 'neutral', string> = {
 }
 
 const RISK_BADGE_TONE = 'border-rose-500/50 bg-rose-950/40 text-rose-300'
+
+const BUSINESS_BADGE_TONE: Record<BusinessBadge['tone'], string> = {
+  good: 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300',
+  warn: 'border-rose-500/50 bg-rose-950/40 text-rose-300',
+  info: 'border-cyan-500/50 bg-cyan-950/40 text-cyan-300',
+  neutral: 'border-slate-600/50 bg-slate-800/40 text-slate-300',
+}
 
 function sliceTable(table: DetailTable | null | undefined, limit: number): DetailTable | null {
   if (!table) return null
@@ -330,6 +338,14 @@ export default async function StockPage({ params }: Props) {
   const copyMarkdown = buildCopyMarkdown(view)
   const growth = view.growth
 
+  // Business badges complement the quality badge + risk flags; drop any label
+  // already shown by those so the same classification never appears twice.
+  const takenLabels = new Set<string>([view.quality.primary.label.toUpperCase(), ...view.quality.risks.map((risk) => risk.label.toUpperCase())])
+  const businessBadges = view.businessBadges.filter((badge) => !takenLabels.has(badge.label.toUpperCase()))
+
+  // Collapse consecutive duplicate names (e.g. Financial Services › Financial Services).
+  const industryCrumbs = view.industry.filter((level, index, all) => index === 0 || (level.name ?? '').trim().toLowerCase() !== (all[index - 1].name ?? '').trim().toLowerCase())
+
   const metrics: { label: string; value: string; tone: MetricTone; title?: string }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
@@ -354,8 +370,8 @@ export default async function StockPage({ params }: Props) {
 
   return (
     <div className="flex flex-col bg-[#070b14] text-xs text-slate-200 antialiased">
-      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[#1b263b] bg-[#0b1220] px-4 py-2">
-        <div className="flex items-center gap-6">
+      <header className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-2 border-b border-[#1b263b] bg-[#0b1220] px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
           <Link href="/" className="flex items-center gap-2">
             <div className="flex items-end gap-0.5 rounded-lg border border-cyan-800/40 bg-[#0e1e38] p-1.5">
               <div className="h-3 w-1.5 rounded-sm bg-cyan-400" />
@@ -364,13 +380,13 @@ export default async function StockPage({ params }: Props) {
             </div>
             <div>
               <span className="block text-lg font-black leading-none tracking-tight text-white">Q-Scan</span>
-              <span className="block text-[10px] leading-none tracking-wider text-slate-400">Fundamental Stock Scanner</span>
+              <span className="hidden text-[10px] leading-none tracking-wider text-slate-400 sm:block">Fundamental Stock Scanner</span>
             </div>
           </Link>
-          {stock.scanners[0] && <span className="rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400">{stock.scanners[0].scanner.name}</span>}
+          {stock.scanners[0] && <span className="hidden rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 sm:block">{stock.scanners[0].scanner.name}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <form action="/" method="get" className="relative w-80">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
+          <form action="/" method="get" className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
             <input name="q" placeholder="Search company name or symbol..." className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-3 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none" />
           </form>
           <RefreshButton symbol={view.symbol} />
@@ -403,9 +419,9 @@ export default async function StockPage({ params }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-5">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-5">
                 <div className="text-right">
-                  <div className="font-mono text-2xl font-black tracking-tight text-white">₹ {formatNum(view.price)}</div>
+                  <div className="font-mono text-xl font-black tracking-tight text-white sm:text-2xl">₹ {formatNum(view.price)}</div>
                   <div className="mt-0.5 flex items-center justify-end gap-2 font-mono text-[10px] text-slate-400">
                     <span className="inline-flex items-center gap-1 text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -442,29 +458,35 @@ export default async function StockPage({ params }: Props) {
                   ⚠ {risk.label}
                 </span>
               ))}
+              {businessBadges.map((badge) => (
+                <span key={badge.label} className={`rounded border px-2 py-0.5 text-2xs font-bold uppercase tracking-wider ${BUSINESS_BADGE_TONE[badge.tone]}`} title={badge.reason}>
+                  {badge.label}
+                </span>
+              ))}
               <ScoreBadge breakdown={view.scoreBreakdown} />
-              {view.industry.length > 0 && (
-                <nav aria-label="Industry classification" className="ms-auto flex flex-wrap items-center gap-1 text-2xs text-slate-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-3 text-cyan-400" aria-hidden="true">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                  {view.industry.map((level, index) => (
-                    <Fragment key={level.level}>
-                      {index > 0 && <span aria-hidden="true">›</span>}
-                      {level.url ? (
-                        <Link href={level.url} className="rounded px-1 py-0.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-cyan-300" title={level.level}>
-                          {level.name}
-                        </Link>
-                      ) : (
-                        <span className="rounded px-1 py-0.5 text-slate-300" title={level.level}>{level.name}</span>
-                      )}
-                    </Fragment>
-                  ))}
-                </nav>
-              )}
             </div>
           </section>
+
+          {industryCrumbs.length > 0 && (
+            <nav aria-label="Industry classification" className="flex flex-wrap items-center gap-1 px-1 text-2xs text-slate-500">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-3 text-cyan-400" aria-hidden="true">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {industryCrumbs.map((level, index) => (
+                <Fragment key={`${level.level}-${level.name}`}>
+                  {index > 0 && <span aria-hidden="true" className="text-slate-600">›</span>}
+                  {level.url ? (
+                    <Link href={level.url} className="rounded px-1 py-0.5 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-300" title={level.level}>
+                      {level.name}
+                    </Link>
+                  ) : (
+                    <span className="rounded px-1 py-0.5 text-slate-300" title={level.level}>{level.name}</span>
+                  )}
+                </Fragment>
+              ))}
+            </nav>
+          )}
 
           <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
             {metrics.map((metric) => (

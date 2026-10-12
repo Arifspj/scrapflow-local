@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { getCategoryData } from '@/lib/category-data'
 import { categoryHref, categoryLevel, categorySourceUrl, LEVEL_LABEL, normalizeMarketSegments } from '@/lib/category'
 import { CategoryTable } from './category-table'
+import { ImportCategoryButton } from './import-category-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ export default async function MarketCategoryPage({ params }: Props) {
   const segments = normalizeMarketSegments(slug)
   if (!segments) notFound()
 
-  const { rows, trail } = await getCategoryData(segments)
+  const { rows, trail, imported } = await getCategoryData(segments)
   const level = categoryLevel(segments)
   const heading = trail.at(-1)?.name ?? segments.join(' / ')
   const sourceUrl = categorySourceUrl(segments)
@@ -87,20 +88,32 @@ export default async function MarketCategoryPage({ params }: Props) {
             <p className="text-xs font-semibold uppercase tracking-[.2em] text-sky-400">{LEVEL_LABEL[level]}</p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">{heading}</h1>
             <p className="mt-1 text-xs text-slate-400">
-              Companies already saved in Q-Scan whose screener.in classification matches this category.{' '}
+              {imported
+                ? `${imported.uniqueCompanies} companies imported from screener.in${imported.totalResults != null ? ` (source reports ${imported.totalResults})` : ''}.`
+                : 'Companies saved in Q-Scan whose screener.in classification matches this category.'}{' '}
               <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
                 View source on screener.in
               </a>
             </p>
+            {imported && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Last import: {imported.status} · {imported.pagesFetched} page(s)
+                {imported.pagesFailed > 0 ? ` · ${imported.pagesFailed} failed` : ''}
+                {imported.finishedAt ? ` · ${new Date(imported.finishedAt).toLocaleString('en-IN')}` : ''}
+              </p>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:col-span-4">
-            <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
-              <p className="text-[11px] text-slate-500">Companies</p>
-              <p className="mt-2 text-base font-bold text-white">{rows.length}</p>
-            </div>
-            <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
-              <p className="text-[11px] text-slate-500">Category path</p>
-              <p className="mt-2 truncate font-mono text-xs text-slate-300">{sourceUrl}</p>
+          <div className="flex flex-col items-stretch gap-3 lg:col-span-4 lg:items-end">
+            <ImportCategoryButton segments={segments} />
+            <div className="grid w-full grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
+                <p className="text-[11px] text-slate-500">Companies</p>
+                <p className="mt-2 text-base font-bold text-white">{rows.length}</p>
+              </div>
+              <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
+                <p className="text-[11px] text-slate-500">Category path</p>
+                <p className="mt-2 truncate font-mono text-xs text-slate-300">{sourceUrl}</p>
+              </div>
             </div>
           </div>
         </section>

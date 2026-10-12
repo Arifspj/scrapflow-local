@@ -1,6 +1,7 @@
 import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
 import { computePiotroskiScore } from './piotroski'
 import { computeQuarterGrowth } from './growth'
+import { buildBusinessBadges, type BusinessBadge } from './business-badges'
 import { computeQuality, type QualityResult } from './quality'
 import { computeScore, type ScoreBreakdown } from './score'
 import type { DetailRow, DetailTable, IndustryLink, ScreenerDetail } from './scrapers/screener-detail'
@@ -271,6 +272,8 @@ export type StockView = {
   industry: IndustryLink[]
   growth: ReturnType<typeof computeQuarterGrowth>
   badges: Badge[]
+  /** Union of legacy and named business-quality badges (deduped), see business-badges.ts. */
+  businessBadges: BusinessBadge[]
   capturedAt: Date | null
   sourceUrl: string | null
 }
@@ -400,6 +403,17 @@ export function buildStockView(
     industry: detail?.industry ?? [],
     growth,
     badges: buildBadges({ upside: valuation.upside, salesYoy, profitYoy, roce, debtToEquity }),
+    businessBadges: buildBusinessBadges({
+      upside: valuation.upside,
+      pe,
+      roce,
+      roe,
+      salesYoy,
+      profitYoy,
+      qoqProfitPct: growth?.qoq.netProfit.pct ?? null,
+      debtToEquity,
+      piotroski: piotroskiResult.score,
+    }),
     capturedAt: latest?.capturedAt ?? null,
     sourceUrl: latest?.sourceUrl ?? detail?.sourceUrl ?? null,
   }

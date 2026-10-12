@@ -94,8 +94,19 @@ export type CategoryStockRow = {
   risks: string[]
 }
 
+export type CategoryImportMeta = {
+  status: string
+  totalResults: number | null
+  uniqueCompanies: number
+  pagesFetched: number
+  pagesFailed: number
+  finishedAt: string | null
+}
+
 export type CategoryData = {
   rows: CategoryStockRow[]
   /** Breadcrumb trail harvested from the first matching company. */
   trail: CategoryCrumb[]
+  /** Latest import report, present once the category has been imported from source. */
+  imported: CategoryImportMeta | null
 }
