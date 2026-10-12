@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 
 import { parseChartinkScreen } from './chartink'
 import { parseSource, sourceKindFromLabel } from './index'
-import { cleanSymbol, parseNumber, parseScreenerCompany, parseScreenerScreen } from './screener'
+import {
+  cleanSymbol,
+  parseNumber,
+  parseScreenerCompany,
+  parseScreenerScreen,
+  parseScreenerSearchResults,
+  pickCompanyFromSearchResults,
+  typoCandidates,
+} from './screener'
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), 'utf8')
@@ -60,6 +68,7 @@ describe('parseScreenerCompany', () => {
     )
     expect(result.symbols).toEqual([{ symbol: 'RELIANCE', companyName: 'Reliance Industries Ltd' }])
     expect(result.fundamentals).toEqual({
+      currentPrice: 2900,
       marketCap: 1963123,
       peRatio: 28.5,
       bookValue: 1245,
@@ -86,6 +95,54 @@ describe('parseScreenerCompany', () => {
       'https://www.screener.in/company/RELIANCE/',
     )
     expect(result.symbols).toEqual([{ symbol: 'RELIANCE', companyName: 'Reliance Industries Ltd' }])
+  })
+})
+
+describe('parseScreenerSearchResults', () => {
+  it('keeps only valid name/url pairs', () => {
+    const results = parseScreenerSearchResults([
+      { id: 1, name: 'Reliance Industries Ltd', url: '/company/RELIANCE/consolidated/' },
+      { name: '', url: '/company/X/' },
+      'nope',
+    ])
+    expect(results).toEqual([
+      { id: 1, name: 'Reliance Industries Ltd', url: '/company/RELIANCE/consolidated/' },
+    ])
+  })
+})
+
+describe('pickCompanyFromSearchResults', () => {
+  const results = [
+    { name: 'Reliance Industries Ltd', url: '/company/RELIANCE/consolidated/' },
+    { name: 'Reliance Home Finance Ltd', url: '/company/RHFL/consolidated/' },
+  ]
+
+  it('prefers an exact symbol match', () => {
+    expect(pickCompanyFromSearchResults(results, 'rhfl')?.name).toBe('Reliance Home Finance Ltd')
+  })
+
+  it('prefers an exact name match', () => {
+    expect(pickCompanyFromSearchResults(results, 'Reliance Industries Ltd')?.url).toBe(
+      '/company/RELIANCE/consolidated/',
+    )
+  })
+
+  it('falls back to the first result', () => {
+    expect(pickCompanyFromSearchResults(results, 'reliance')?.name).toBe('Reliance Industries Ltd')
+  })
+
+  it('returns null when there are no results', () => {
+    expect(pickCompanyFromSearchResults([], 'x')).toBeNull()
+  })
+})
+
+describe('typoCandidates', () => {
+  it('includes the transposition that fixes "reilance"', () => {
+    expect(typoCandidates('reilance')).toContain('reliance')
+  })
+
+  it('returns nothing for very short queries', () => {
+    expect(typoCandidates('re')).toEqual([])
   })
 })
 

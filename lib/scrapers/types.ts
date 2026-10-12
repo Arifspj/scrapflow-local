@@ -1,6 +1,7 @@
 export type SourceKind = 'chartink-scan' | 'screener-screen' | 'screener-company'
 
 export type ParsedFundamental = {
+  currentPrice?: number
   marketCap?: number
   peRatio?: number
   bookValue?: number
@@ -10,6 +11,7 @@ export type ParsedFundamental = {
   debtToEquity?: number
   revenue?: number
   netProfit?: number
+  eps?: number
 }
 
 export type ParsedSymbol = {

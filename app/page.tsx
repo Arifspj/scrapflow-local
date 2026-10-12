@@ -1,5 +1,9 @@
 import Link from 'next/link'
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { getPublicSnapshot, scannerCategories, display, score } from '@/lib/public-data'
+import { findStocksByQuery, upsertStockFromScrape } from '@/lib/stocks'
+import { rateLimited, scrapeScreenerCompany } from '@/lib/scrapers/resolve'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,7 +11,28 @@ type Props = { searchParams: Promise<{ scanner?: string; q?: string }> }
 
 export default async function HomePage({ searchParams }: Props) {
   const params = await searchParams
-  const data = await getPublicSnapshot(params.scanner, params.q?.trim() || '')
+  const query = params.q?.trim() || ''
+
+  if (query) {
+    const saved = await findStocksByQuery(query)
+    const exact = saved.find((stock) => stock.symbol.toUpperCase() === query.toUpperCase())
+    if (exact) redirect(`/stocks/${encodeURIComponent(exact.symbol)}`)
+    if (saved.length === 1) redirect(`/stocks/${encodeURIComponent(saved[0].symbol)}`)
+
+    if (saved.length === 0) {
+      const requestHeaders = await headers()
+      const clientKey = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anonymous'
+      if (!rateLimited(clientKey)) {
+        const scraped = await scrapeScreenerCompany(query)
+        if (scraped) {
+          await upsertStockFromScrape(scraped)
+          redirect(`/stocks/${encodeURIComponent(scraped.symbol)}`)
+        }
+      }
+    }
+  }
+
+  const data = await getPublicSnapshot(params.scanner, query)
   const scanner = data.scanner
   return <main className="min-h-screen bg-[#050b14] text-slate-300 antialiased"><header className="sticky top-0 z-20 border-b border-[#122238] bg-[#071120]/95 backdrop-blur"><div className="mx-auto flex max-w-[1720px] items-center justify-between gap-4 px-4 py-3"><Link href="/" className="flex shrink-0 items-center gap-2.5"><span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-tr from-sky-600 to-emerald-500 text-lg font-bold text-white">Q</span><span><b className="block text-base tracking-tight text-white">Q-Scan</b><small className="text-[10px] text-slate-400">Fundamental Stock Scanner</small></span></Link><nav className="hidden items-center gap-1 text-xs font-medium md:flex"><Link className="rounded-md bg-[#0b386b] px-3.5 py-1.5 text-white" href="/">Scanner</Link><Link className="rounded-md px-3.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white" href="/admin">Admin</Link></nav><form action="/" className="hidden w-72 sm:block"><input name="q" defaultValue={params.q} placeholder="Search company or symbol..." className="w-full rounded-lg border border-[#162740] bg-[#0b1626] px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500" /></form></div></header><div className="mx-auto max-w-[1720px] space-y-4 px-4 py-4"><div className="flex gap-2 overflow-x-auto pb-1 text-xs whitespace-nowrap">{scannerCategories.map(([name]) => { const target = data.scanner?.name === name ? '/' : `/?scanner=${encodeURIComponent(name)}`; const active = data.scanner?.name === name; return <Link key={name} href={active ? '/' : target} className={`rounded-lg border px-3 py-1.5 ${active ? 'border-sky-500 bg-[#0b294e] text-sky-300' : 'border-[#13243c] bg-[#0a1525] text-slate-400 hover:text-white'}`}>{name}</Link> })}</div><section className="grid items-end gap-4 lg:grid-cols-12"><div className="lg:col-span-4"><p className="text-xs font-semibold uppercase tracking-[.2em] text-sky-400">{scanner?.category || 'Public scanner'}</p><h1 className="mt-2 text-2xl font-bold tracking-tight text-white">{scanner?.name || 'No scanner data'}</h1><p className="mt-1 text-xs text-slate-500">{scanner?.description || 'Import source-backed records from the admin panel to populate this view.'}</p></div><div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:col-span-8"><Metric label="Stocks in DB" value={data.stockCount.toLocaleString()} /><Metric label="Current results" value={data.total.toLocaleString()} /><Metric label="High score" value={data.rows.filter((row) => (score(row) || 0) >= 70).length.toString()} /><Metric label="Last updated" value={data.latest ? data.latest.updatedAt.toLocaleDateString('en-IN') : 'Not available'} /></div></section><section className="rounded-xl border border-[#12233c] bg-[#081220]/80 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><form action="/" className="flex min-w-[240px] flex-1 gap-2"><input type="hidden" name="scanner" value={scanner?.id || ''} /><input name="q" defaultValue={params.q} placeholder="Filter this scanner..." className="min-w-0 flex-1 rounded-lg border border-[#182c49] bg-[#0b182b] px-3 py-2 text-xs outline-none focus:border-sky-500" /><button className="rounded-lg bg-sky-700 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-600">Apply filters</button></form><span className="text-xs text-slate-500">{data.total} saved membership{data.total === 1 ? '' : 's'}</span></div></section><section className="overflow-hidden rounded-xl border border-[#162844] bg-[#091527]"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-xs"><thead className="border-b border-[#162844] text-[10px] uppercase tracking-wider text-slate-500"><tr>{['Company','LTP','IV','MOS%','P/E','Market Cap','ROCE','D/E','Score','Updated'].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead><tbody className="divide-y divide-[#12233c]">{data.rows.map((row) => { const f = row.stock.fundamentals[0]; const s = score(row); return <tr key={row.stock.id} className="hover:bg-sky-400/[.04]"><td className="px-4 py-3"><Link href={`/stocks/${encodeURIComponent(row.stock.symbol)}`} className="font-semibold text-white hover:text-sky-300">{row.stock.companyName || row.stock.symbol}</Link><span className="ml-2 text-[10px] text-slate-500">{row.stock.symbol}</span></td><td className="px-4 py-3">—</td><td className="px-4 py-3">—</td><td className="px-4 py-3">—</td><td className="px-4 py-3">{display(f?.peRatio)}</td><td className="px-4 py-3">{display(f?.marketCap)}</td><td className="px-4 py-3 text-emerald-300">{display(f?.roce, '%')}</td><td className="px-4 py-3">{display(f?.debtToEquity)}</td><td className="px-4 py-3 font-semibold text-amber-300">{s ?? '—'}</td><td className="px-4 py-3 text-slate-500">{row.lastSeenAt.toLocaleDateString('en-IN')}</td></tr> })}</tbody></table></div>{!data.rows.length && <div className="p-14 text-center"><h2 className="text-sm font-semibold text-white">No saved records yet</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This public page only reads persisted scanner memberships. Test and confirm an import in the admin panel to see source-backed results here.</p></div>}</section></div></main>
 }

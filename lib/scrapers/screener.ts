@@ -32,12 +32,14 @@ export function parseNumber(raw: string | undefined | null): number | null {
 }
 
 const RATIO_FIELD_BY_LABEL: Record<string, keyof ParsedFundamental> = {
+  'current price': 'currentPrice',
   'market cap': 'marketCap',
   'stock p/e': 'peRatio',
   'book value': 'bookValue',
   'dividend yield': 'dividendYield',
   roce: 'roce',
   roe: 'roe',
+  eps: 'eps',
   'debt to equity': 'debtToEquity',
   sales: 'revenue',
   'net profit': 'netProfit',
@@ -45,6 +47,71 @@ const RATIO_FIELD_BY_LABEL: Record<string, keyof ParsedFundamental> = {
 
 function normalizeLabel(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+export type ScreenerSearchResult = {
+  id?: number
+  name: string
+  url: string
+}
+
+export function parseScreenerSearchResults(json: unknown): ScreenerSearchResult[] {
+  if (!Array.isArray(json)) return []
+  const out: ScreenerSearchResult[] = []
+  for (const item of json) {
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    const name = typeof record.name === 'string' ? record.name.trim() : ''
+    const url = typeof record.url === 'string' ? record.url.trim() : ''
+    if (!name || !url) continue
+    const id = Number(record.id)
+    out.push({ id: Number.isFinite(id) ? id : undefined, name, url })
+  }
+  return out
+}
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * Small, bounded typo fallback: adjacent transpositions first (fixes e.g.
+ * "reilance" -> "reliance"), then single deletions. Kept short on purpose so a
+ * miss does not fan out into many upstream requests.
+ */
+export function typoCandidates(query: string, max = 8): string[] {
+  const q = query.trim().toLowerCase()
+  if (q.length < 3) return []
+  const seen = new Set<string>()
+  const add = (value: string) => {
+    if (value.length >= 3 && value !== q) seen.add(value)
+  }
+  for (let i = 0; i < q.length - 1; i += 1) {
+    const chars = q.split('')
+    ;[chars[i], chars[i + 1]] = [chars[i + 1], chars[i]]
+    add(chars.join(''))
+  }
+  for (let i = 0; i < q.length; i += 1) {
+    add(q.slice(0, i) + q.slice(i + 1))
+  }
+  return [...seen].slice(0, max)
+}
+
+/** Pick the most likely company from screener search results for a query. */
+export function pickCompanyFromSearchResults(
+  results: ScreenerSearchResult[],
+  query: string,
+): ScreenerSearchResult | null {
+  if (!results.length) return null
+  const upper = query.trim().toUpperCase()
+  const exactSymbol = results.find((result) => symbolFromCompanyHref(result.url) === upper)
+  if (exactSymbol) return exactSymbol
+  const name = normalizeName(query)
+  const exactName = results.find((result) => normalizeName(result.name) === name)
+  if (exactName) return exactName
+  const startsWith = results.find((result) => normalizeName(result.name).startsWith(name))
+  if (startsWith) return startsWith
+  return results[0]
 }
 
 export function parseScreenerScreen(html: string): ParseResult {
@@ -95,9 +162,9 @@ export function parseScreenerCompany(html: string, sourceUrl: string): ParseResu
     if (value != null) fundamentals[field] = value
   })
 
-  $('table.data-table').each((_, table) => {
+  $('table.data-table, #profit-loss table, #ratios table, #balance-sheet table').each((_, table) => {
     $(table)
-      .find('tbody tr')
+      .find('tbody tr, tr')
       .each((_, row) => {
         const label = normalizeLabel($(row).find('td').first().text())
         const field = RATIO_FIELD_BY_LABEL[label]
