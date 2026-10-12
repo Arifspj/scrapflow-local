@@ -79,6 +79,14 @@ describe('parseScreenerCompany', () => {
     )
     expect(result.symbols).toEqual([{ symbol: 'ACME', companyName: 'Acme Ltd' }])
   })
+
+  it('prefers the URL symbol over an unrelated numeric company link', () => {
+    const result = parseScreenerCompany(
+      '<html><body><h1>Reliance Industries Ltd</h1><a href="/company/2726/">Peer</a><ul id="top-ratios"></ul></body></html>',
+      'https://www.screener.in/company/RELIANCE/',
+    )
+    expect(result.symbols).toEqual([{ symbol: 'RELIANCE', companyName: 'Reliance Industries Ltd' }])
+  })
 })
 
 describe('parseChartinkScreen', () => {

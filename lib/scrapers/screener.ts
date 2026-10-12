@@ -79,11 +79,10 @@ export function parseScreenerCompany(html: string, sourceUrl: string): ParseResu
 
   const companyName = $('h1').first().text().replace(/\s+/g, ' ').trim() || null
 
-  let symbol = symbolFromCompanyHref($('a[href*="/company/"]').first().attr('href'))
-  if (!symbol) {
-    const fromUrl = sourceUrl.match(/\/company\/([^/?#]+)/i)
-    if (fromUrl) symbol = cleanSymbol(decodeURIComponent(fromUrl[1]))
-  }
+  // Prefer the symbol from the canonical company URL: the first /company/ link on
+  // the page is often an unrelated numeric id (e.g. /company/2726/), not the symbol.
+  let symbol = symbolFromCompanyHref(sourceUrl)
+  if (!symbol) symbol = symbolFromCompanyHref($('a[href*="/company/"]').first().attr('href'))
 
   const fundamentals: ParsedFundamental = {}
 
