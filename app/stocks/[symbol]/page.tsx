@@ -25,15 +25,17 @@ import {
   isTickerSymbol,
   type MetricTone,
 } from '@/lib/metrics'
-import type { DetailTable, PeerRow } from '@/lib/scrapers/screener-detail'
+import type { DetailTable, IndustryLink, PeerRow } from '@/lib/scrapers/screener-detail'
 import { ensureStockDetail } from '@/lib/stocks'
+import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataButton } from './copy-data-button'
 import { RefreshButton } from './refresh-button'
 import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
-import { Sidebar, type SidebarItem } from './sidebar'
+import type { SidebarItem } from './sidebar'
+import { StockWorkspace } from './workspace'
 
 export const dynamic = 'force-dynamic'
 type Props = { params: Promise<{ symbol: string }> }
@@ -60,6 +62,27 @@ function sliceTable(table: DetailTable | null | undefined, limit: number): Detai
   }
 }
 
+/** Extract the industry code segments from a screener.in `/market/.../` URL. */
+function marketSegments(url: string | null | undefined): string[] | null {
+  if (!url) return null
+  const match = url.match(/\/market\/([A-Za-z0-9/]+)/)
+  if (!match) return null
+  const segments = match[1].split('/').filter(Boolean)
+  if (segments.length < 1 || segments.length > MARKET_LEVELS.length) return null
+  return segments
+}
+
+function withTrailingSlash(url: string | null): string {
+  return (url ?? '').replace(/\/+$/, '') + '/'
+}
+
+/** Friendly label for a category path, falling back to its level name. */
+function categoryLabel(industry: readonly IndustryLink[], segments: readonly string[]): string {
+  const path = withTrailingSlash(`/market/${segments.join('/')}`)
+  const match = industry.find((level) => withTrailingSlash(level.url) === path)
+  return match?.name ?? LEVEL_LABEL[categoryLevel(segments)]
+}
+
 function Kpi({ label, value, tone, title }: { label: string; value: string; tone: MetricTone; title?: string }) {
   return (
     <div className="flex flex-col justify-between rounded-md border border-[#1d2b45] bg-[#0e1626] p-2" title={title}>
@@ -72,9 +95,9 @@ function Kpi({ label, value, tone, title }: { label: string; value: string; tone
   )
 }
 
-function Card({ title, right, children, id }: { title: string; right?: ReactNode; children: ReactNode; id?: string }) {
+function Card({ title, right, children, id, className }: { title: string; right?: ReactNode; children: ReactNode; id?: string; className?: string }) {
   return (
-    <div id={id} className="flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
+    <div id={id} className={`flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3 ${className ?? ''}`}>
       <div className="flex items-center justify-between border-b border-[#1b263d] pb-1.5">
         <h3 className="text-xs font-bold text-white">{title}</h3>
         {right}
@@ -346,6 +369,14 @@ export default async function StockPage({ params }: Props) {
   // Collapse consecutive duplicate names (e.g. Financial Services › Financial Services).
   const industryCrumbs = view.industry.filter((level, index, all) => index === 0 || (level.name ?? '').trim().toLowerCase() !== (all[index - 1].name ?? '').trim().toLowerCase())
 
+  // A category-imported scanner stores its screener.in listing URL as its name;
+  // turn that into a friendly internal link one level up from the deepest
+  // industry, so the header points at a populated broad-industry page.
+  const scannerName = stock.scanners[0]?.scanner.name ?? null
+  const scannerSegments = marketSegments(scannerName)
+  const browseSegments = scannerSegments && scannerSegments.length > 1 ? scannerSegments.slice(0, -1) : scannerSegments
+  const browseCategory = browseSegments ? { href: categoryHref(browseSegments), label: categoryLabel(view.industry, browseSegments) } : null
+
   const metrics: { label: string; value: string; tone: MetricTone; title?: string }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
@@ -383,7 +414,17 @@ export default async function StockPage({ params }: Props) {
               <span className="hidden text-[10px] leading-none tracking-wider text-slate-400 sm:block">Fundamental Stock Scanner</span>
             </div>
           </Link>
-          {stock.scanners[0] && <span className="hidden rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 sm:block">{stock.scanners[0].scanner.name}</span>}
+          {browseCategory ? (
+            <Link
+              href={browseCategory.href}
+              title={`Browse ${browseCategory.label} category`}
+              className="hidden rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 transition-colors hover:border-cyan-500 hover:text-cyan-300 sm:block"
+            >
+              {browseCategory.label}
+            </Link>
+          ) : scannerName ? (
+            <span className="hidden rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 sm:block">{scannerName}</span>
+          ) : null}
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
           <form action="/" method="get" className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
@@ -393,9 +434,7 @@ export default async function StockPage({ params }: Props) {
         </div>
       </header>
 
-      <div className="flex items-start">
-        <Sidebar items={sidebarItems} activeSymbol={view.symbol} />
-
+      <StockWorkspace items={sidebarItems} activeSymbol={view.symbol}>
         <main className="min-w-0 flex-1 space-y-3 bg-[#080c16] px-4 py-3">
           <section className="rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3 shadow-md">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1b273d] pb-3">
@@ -494,7 +533,7 @@ export default async function StockPage({ params }: Props) {
             ))}
           </section>
 
-          <section aria-label="Growth" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <section aria-label="Growth" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
             <Card title="Quarter on Quarter (QoQ)">
               <GrowthPanel
                 growth={growth?.qoq ?? null}
@@ -511,122 +550,102 @@ export default async function StockPage({ params }: Props) {
                 footnote="Source: screener.in quarterly results."
               />
             </Card>
+            <Card title="Shareholding Pattern" id="shareholding">
+              {shareholding ? (
+                <table className="w-full text-left text-2xs">
+                  <thead>
+                    <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
+                      <th className="py-1">Category</th>
+                      <th className="py-1 text-right">Latest</th>
+                      <th className="py-1 text-right">Previous</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#152136] text-slate-300">
+                    {shareCategories.map(([label, row]) => {
+                      const latest = lastNonEmpty(row?.values)
+                      const previous = row && row.values.length > 1 ? row.values[row.values.length - 2] : null
+                      return (
+                        <tr key={label}>
+                          <td className="py-1 font-medium text-slate-200">{label}</td>
+                          <td className="py-1 text-right font-mono font-bold text-white">{latest ?? '—'}</td>
+                          <td className="py-1 text-right font-mono text-slate-400">{previous ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="py-6 text-center text-xs text-slate-500">Shareholding data not available.</p>
+              )}
+            </Card>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-4">
-              <Card title="Quarterly Trend (₹ Cr)">
-                <QuarterlyBarChart chart={quarterlyChart} />
-              </Card>
-            </div>
-            <div className="lg:col-span-4">
-              <Card title="Annual Profit Trend (₹ Cr)">
-                <ProfitLineChart chart={annualChart} />
-              </Card>
-            </div>
-            <div className="lg:col-span-4">
-              <RoceCalculator roce={view.roce} />
-            </div>
+          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
+            <Card title="Quarterly Trend (₹ Cr)">
+              <QuarterlyBarChart chart={quarterlyChart} />
+            </Card>
+            <Card title="Annual Profit Trend (₹ Cr)">
+              <ProfitLineChart chart={annualChart} />
+            </Card>
+            <RoceCalculator roce={view.roce} />
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-4">
-              <Card title="Intrinsic Value">
-                <div className="grid grid-cols-3 gap-2 py-3 text-center">
-                  <div>
-                    <div className="text-[10px] text-slate-400">Current Price</div>
-                    <div className="mt-0.5 font-mono text-base font-black text-emerald-400">{formatInr(view.price)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-slate-400">Intrinsic Value</div>
-                    <div className="mt-0.5 font-mono text-base font-black text-cyan-400">{formatInr(view.valuation.intrinsic)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-slate-400">Upside</div>
-                    <div className={`mt-0.5 font-mono text-base font-black ${getMetricColorClass(getMetricStatus('marginOfSafety', view.valuation.marginOfSafety))}`}>{formatPct(view.valuation.upside)}</div>
-                  </div>
+          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+            <Card title="Intrinsic Value">
+              <div className="grid grid-cols-3 gap-2 py-3 text-center">
+                <div>
+                  <div className="text-[10px] text-slate-400">Current Price</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-emerald-400">{formatInr(view.price)}</div>
                 </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] font-semibold">
-                    <span className="text-slate-300">Margin of Safety: {formatPct(view.valuation.marginOfSafety)}</span>
-                    <span className="text-cyan-400">IV ₹{formatNum(view.valuation.intrinsic, 0)}</span>
-                  </div>
-                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-[#1b263d]">
-                    <div className="h-full w-1/2 bg-cyan-500" />
-                    <div className="h-full w-1/2 bg-rose-500" />
-                  </div>
+                <div>
+                  <div className="text-[10px] text-slate-400">Intrinsic Value</div>
+                  <div className="mt-0.5 font-mono text-base font-black text-cyan-400">{formatInr(view.valuation.intrinsic)}</div>
                 </div>
-                <div className="mt-3 rounded border border-[#1b2d4b] bg-[#0a1220] p-2 text-2xs leading-snug">
-                  <div className="font-medium text-emerald-400">Screener.in Graham number: √(EPS × Book Value × max PE × max P/BV)</div>
-                  <div className="text-slate-400">max PE = 5-yr median sales growth × 1.5 (capped 8–100); max P/BV = 5-yr median ROCE ÷ 8 (capped 1–10). Not investment advice.</div>
+                <div>
+                  <div className="text-[10px] text-slate-400">Upside</div>
+                  <div className={`mt-0.5 font-mono text-base font-black ${getMetricColorClass(getMetricStatus('marginOfSafety', view.valuation.marginOfSafety))}`}>{formatPct(view.valuation.upside)}</div>
                 </div>
-              </Card>
-            </div>
-            <div className="lg:col-span-4">
-              <Card title="Valuation Metrics">
-                <ValuationTable view={view} />
-              </Card>
-            </div>
-            <div className="lg:col-span-4">
-              <TradeCalculator entry={view.price} />
-            </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-semibold">
+                  <span className="text-slate-300">Margin of Safety: {formatPct(view.valuation.marginOfSafety)}</span>
+                  <span className="text-cyan-400">IV ₹{formatNum(view.valuation.intrinsic, 0)}</span>
+                </div>
+                <div className="flex h-2 w-full overflow-hidden rounded-full bg-[#1b263d]">
+                  <div className="h-full w-1/2 bg-cyan-500" />
+                  <div className="h-full w-1/2 bg-rose-500" />
+                </div>
+              </div>
+              <div className="mt-3 rounded border border-[#1b2d4b] bg-[#0a1220] p-2 text-2xs leading-snug">
+                <div className="font-medium text-emerald-400">Screener.in Graham number: √(EPS × Book Value × max PE × max P/BV)</div>
+                <div className="text-slate-400">max PE = 5-yr median sales growth × 1.5 (capped 8–100); max P/BV = 5-yr median ROCE ÷ 8 (capped 1–10). Not investment advice.</div>
+              </div>
+            </Card>
+            <TradeCalculator entry={view.price} />
           </section>
 
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            <div className="lg:col-span-6">
-              <Card title="Quarterly Results (₹ Cr)">
-                <FinancialTable table={quartersTable} />
-              </Card>
-            </div>
-            <div className="lg:col-span-6 space-y-3">
-              <Card title="Annual Profit & Loss (₹ Cr)">
-                <FinancialTable table={annualTable} />
-              </Card>
-              <Card title="Cash Flow Statement (₹ Cr)">
-                <FinancialTable table={cashFlowTable} />
-              </Card>
-            </div>
+          <Card title="Valuation Metrics">
+            <ValuationTable view={view} />
+          </Card>
+
+          <Card title="Quarterly Results (₹ Cr)">
+            <FinancialTable table={quartersTable} />
+          </Card>
+
+          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+            <Card title="Annual Profit & Loss (₹ Cr)">
+              <FinancialTable table={annualTable} />
+            </Card>
+            <Card title="Cash Flow Statement (₹ Cr)">
+              <FinancialTable table={cashFlowTable} />
+            </Card>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 pb-2 lg:grid-cols-12">
-            <div className="lg:col-span-5">
-              <Card title="Shareholding Pattern" id="shareholding">
-                {shareholding ? (
-                  <table className="w-full text-left text-2xs">
-                    <thead>
-                      <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
-                        <th className="py-1">Category</th>
-                        <th className="py-1 text-right">Latest</th>
-                        <th className="py-1 text-right">Previous</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#152136] text-slate-300">
-                      {shareCategories.map(([label, row]) => {
-                        const latest = lastNonEmpty(row?.values)
-                        const previous = row && row.values.length > 1 ? row.values[row.values.length - 2] : null
-                        return (
-                          <tr key={label}>
-                            <td className="py-1 font-medium text-slate-200">{label}</td>
-                            <td className="py-1 text-right font-mono font-bold text-white">{latest ?? '—'}</td>
-                            <td className="py-1 text-right font-mono text-slate-400">{previous ?? '—'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="py-6 text-center text-xs text-slate-500">Shareholding data not available.</p>
-                )}
-              </Card>
-            </div>
-            <div className="lg:col-span-7">
-              <Card title="Peer Comparison" id="peers">
-                <PeerComparison view={view} />
-              </Card>
-            </div>
-          </section>
+          <Card title="Peer Comparison" id="peers" className="mb-2">
+            <PeerComparison view={view} />
+          </Card>
         </main>
-      </div>
+      </StockWorkspace>
       <ScrollToTop />
     </div>
   )

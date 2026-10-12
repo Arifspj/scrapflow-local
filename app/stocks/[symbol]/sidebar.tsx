@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { formatNum } from '@/lib/stock-detail'
 
@@ -39,9 +39,35 @@ function compareNumber(a: number | null, b: number | null, direction: Direction)
   return (a - b) * (direction === 'asc' ? 1 : -1)
 }
 
-export function Sidebar({ items, activeSymbol }: { items: SidebarItem[]; activeSymbol: string }) {
+function Chevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+      <path d={collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} />
+    </svg>
+  )
+}
+
+export function Sidebar({
+  items,
+  activeSymbol,
+  collapsed = false,
+  onToggleCollapse,
+  open = false,
+  onClose,
+}: {
+  items: SidebarItem[]
+  activeSymbol: string
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+  open?: boolean
+  onClose?: () => void
+}) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; direction: Direction }>({ key: 'rank', direction: 'asc' })
+
+  useEffect(() => {
+    if (open) setQuery('')
+  }, [open])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -88,76 +114,144 @@ export function Sidebar({ items, activeSymbol }: { items: SidebarItem[]; activeS
   }
 
   return (
-    <aside className="sticky top-[53px] flex max-h-[calc(100vh-53px)] w-[280px] shrink-0 flex-col self-start border-r border-[#1a2539] bg-[#090f1a]">
-      <div className="border-b border-[#182338] bg-[#0c1322] p-2">
-        <div className="relative">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search saved stocks..."
-            aria-label="Search saved stocks"
-            className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-2.5 pr-7 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
-          />
-          {query && (
+    <>
+      {open && <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onClick={onClose} aria-hidden="true" />}
+
+      <aside
+        className={`fixed left-0 top-0 z-50 h-[100dvh] w-[280px] max-w-[85vw] flex-col border-r border-[#1a2539] bg-[#090f1a] lg:sticky lg:top-[53px] lg:z-30 lg:h-auto lg:max-h-[calc(100vh-53px)] lg:self-start lg:shadow-none ${
+          open ? 'flex shadow-2xl shadow-black/50' : 'hidden lg:flex'
+        } ${collapsed ? 'lg:w-[72px]' : 'lg:w-[280px]'}`}
+      >
+        <div className="flex items-center justify-between gap-1 border-b border-[#182338] bg-[#0c1322] px-2 py-2">
+          {!collapsed && <span className="pl-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Saved stocks</span>}
+          <div className={`flex items-center gap-1 ${collapsed ? 'mx-auto' : ''}`}>
             <button
               type="button"
-              onClick={() => setQuery('')}
-              aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 text-slate-400 hover:text-white"
+              onClick={onClose}
+              aria-label="Close saved stocks"
+              className="rounded p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:hidden"
             >
-              ×
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-4 w-4" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
             </button>
-          )}
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                aria-label={collapsed ? 'Expand saved stocks' : 'Collapse saved stocks'}
+                aria-expanded={!collapsed}
+                title={collapsed ? 'Expand saved stocks' : 'Collapse saved stocks'}
+                className="hidden rounded p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:block"
+              >
+                <Chevron collapsed={collapsed} />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-12 border-b border-[#182338] bg-[#0c1322] px-2 py-1.5 text-center text-[10px] font-bold uppercase text-slate-400">
-        {HEADERS.map((header) => {
-          const isActive = sort.key === header.key
-          return (
-            <button
-              type="button"
-              key={header.key}
-              onClick={() => toggleSort(header.key)}
-              className={`${header.span} ${header.align} flex items-center gap-0.5 rounded px-0.5 transition-colors hover:text-cyan-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500 ${isActive ? 'text-cyan-300' : ''} ${header.align === 'text-right' ? 'justify-end' : 'justify-start'}`}
-            >
-              {header.label}
-              <span className={`text-[8px] ${isActive ? 'opacity-100' : 'opacity-0'}`}>{isActive && sort.direction === 'desc' ? '▼' : '▲'}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="flex-1 divide-y divide-[#131d2e] overflow-y-auto">
-        {sorted.length === 0 && <p className="px-3 py-6 text-center text-[11px] text-slate-500">No saved stock matches “{query}”.</p>}
-        {sorted.map((item, index) => {
-          const active = item.symbol === activeSymbol
-          return (
-            <Link
-              key={item.id}
-              href={`/stocks/${encodeURIComponent(item.symbol)}`}
-              className={`flex items-center justify-between border-l-2 px-2.5 py-2 transition-colors ${active ? 'border-cyan-400 bg-[#12284c]' : 'border-transparent hover:bg-[#121c30]'}`}
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className={`w-4 shrink-0 text-center font-mono text-[10px] ${active ? 'font-bold text-cyan-300' : 'text-slate-500'}`}>{index + 1}</span>
-                <div className="min-w-0">
-                  <div className={`truncate text-xs leading-snug ${active ? 'font-bold text-white' : 'font-medium text-slate-200'}`}>{item.companyName || item.symbol}</div>
-                  <div className={`truncate font-mono text-[9px] tracking-wider ${active ? 'text-cyan-200' : 'text-slate-400'}`}>{item.symbol}</div>
-                </div>
+        {collapsed ? (
+          <div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
+            {sorted.length === 0 && <span className="px-1 py-4 text-center text-[9px] text-slate-600">—</span>}
+            {sorted.map((item, index) => {
+              const active = item.symbol === activeSymbol
+              return (
+                <Link
+                  key={item.id}
+                  href={`/stocks/${encodeURIComponent(item.symbol)}`}
+                  title={`${item.companyName ?? item.symbol} (${item.symbol})`}
+                  aria-label={`${item.companyName ?? item.symbol} (${item.symbol})`}
+                  className={`flex w-11 flex-col items-center gap-0.5 rounded-md border px-1 py-1.5 transition-colors ${
+                    active ? 'border-cyan-500/60 bg-[#12284c]' : 'border-transparent hover:bg-[#121c30]'
+                  }`}
+                >
+                  <span className={`w-full truncate text-center font-mono text-[10px] font-bold ${active ? 'text-cyan-300' : 'text-slate-300'}`}>
+                    {(item.symbol || '?').slice(0, 3)}
+                  </span>
+                  <span className={`inline-flex h-4 w-8 items-center justify-center rounded font-mono text-[10px] font-bold ${scoreTone(item.score)}`}>
+                    {item.score ?? '—'}
+                  </span>
+                  <span className="text-[8px] text-slate-600">{index + 1}</span>
+                </Link>
+              )
+            })}
+          </div>
+        ) : (
+          <>
+            <div className="border-b border-[#182338] bg-[#0c1322] p-2">
+              <div className="relative">
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search saved stocks..."
+                  aria-label="Search saved stocks"
+                  autoComplete="off"
+                  className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-2.5 pr-7 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 text-slate-400 hover:text-white"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
-              <div className="mr-2.5 shrink-0 text-right">
-                <div className={`font-mono text-xs tabular-nums ${active ? 'font-bold text-white' : 'text-slate-100'}`}>{formatNum(item.price)}</div>
-                <div className="font-mono text-[10px] tabular-nums text-slate-400">IV {formatNum(item.iv, 0)}</div>
-              </div>
-              <span className={`inline-flex h-5 w-7 shrink-0 items-center justify-center rounded font-mono text-[11px] font-bold ${scoreTone(item.score)}`}>{item.score ?? '—'}</span>
-            </Link>
-          )
-        })}
-      </div>
+            </div>
 
-      <div className="border-t border-[#1a2539] bg-[#080d17] p-2 text-[11px] text-slate-400">
-        Showing {sorted.length} of {items.length} saved stock{items.length === 1 ? '' : 's'}
-      </div>
-    </aside>
+            <div className="grid grid-cols-12 border-b border-[#182338] bg-[#0c1322] px-2">
+              {HEADERS.map((header) => (
+                <button
+                  type="button"
+                  key={header.key}
+                  onClick={() => toggleSort(header.key)}
+                  className={`flex items-center gap-0.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 transition-colors hover:text-cyan-300 ${header.align} ${header.span} ${
+                    header.align === 'text-right' ? 'justify-end' : 'justify-start'
+                  } ${sort.key === header.key ? 'text-cyan-300' : ''}`}
+                >
+                  {header.label}
+                  {sort.key === header.key && <span className="text-[8px]">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 divide-y divide-[#131d2e] overflow-y-auto">
+              {sorted.length === 0 && <p className="px-3 py-6 text-center text-[11px] text-slate-500">No saved stock matches “{query}”.</p>}
+              {sorted.map((item, index) => {
+                const active = item.symbol === activeSymbol
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/stocks/${encodeURIComponent(item.symbol)}`}
+                    onClick={onClose}
+                    className={`flex items-center justify-between border-l-2 px-2.5 py-2 transition-colors ${active ? 'border-cyan-400 bg-[#12284c]' : 'border-transparent hover:bg-[#121c30]'}`}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className={`w-4 shrink-0 text-center font-mono text-[10px] ${active ? 'text-cyan-300' : 'text-slate-500'}`}>{index + 1}</span>
+                      <div className="min-w-0">
+                        <div className={`truncate text-[11px] font-semibold ${active ? 'text-cyan-200' : 'text-slate-200'}`}>{item.companyName ?? item.symbol}</div>
+                        <div className="truncate font-mono text-[9px] text-slate-500">{item.symbol}</div>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="font-mono text-[11px] text-slate-300">{formatNum(item.price)}</span>
+                      <span className={`inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded px-1 font-mono text-[10px] font-bold ${scoreTone(item.score)}`}>
+                        {item.score ?? '—'}
+                      </span>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="border-t border-[#1a2539] bg-[#080d17] p-2 text-[11px] text-slate-400">
+              Showing {sorted.length} of {items.length} saved stock{items.length === 1 ? '' : 's'}
+            </div>
+          </>
+        )}
+      </aside>
+    </>
   )
 }

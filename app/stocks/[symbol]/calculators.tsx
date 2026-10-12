@@ -20,7 +20,7 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
   const gain = Number.isFinite(future) ? future - pv : NaN
 
   return (
-    <div className="flex h-full flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
+    <div className="flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
       <div className="border-b border-[#1b263d] pb-2">
         <h3 className="text-xs font-bold text-white">ROCE Compounding Calculator</h3>
       </div>
@@ -91,7 +91,7 @@ export function TradeCalculator({ entry }: { entry: number | null }) {
   const targetDisplay = targetAuto ? (Number.isFinite(autoTarget) && autoTarget > 0 ? String(Math.round(autoTarget)) : '') : targetOverride
 
   return (
-    <div className="flex h-full flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
+    <div className="flex flex-col rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3">
       <div className="border-b border-[#1b263d] pb-1.5">
         <h3 className="text-xs font-bold text-white">Trade Calculator</h3>
       </div>
