@@ -1,10 +1,27 @@
 import * as cheerio from 'cheerio'
-import { parseNumber } from './screener'
+import { parseNumber, symbolFromCompanyHref } from './screener'
 
 type CheerioSelection = ReturnType<cheerio.CheerioAPI>
 
 export type DetailRow = { label: string; values: string[] }
 export type DetailTable = { columns: string[]; rows: DetailRow[] }
+
+export type PeerRow = {
+  companyId: string | null
+  name: string
+  symbol: string | null
+  href: string | null
+  cmp: number | null
+  pe: number | null
+  marketCap: number | null
+  dividendYield: number | null
+  netProfitQtr: number | null
+  profitGrowth: number | null
+  salesQtr: number | null
+  salesGrowth: number | null
+  roce: number | null
+  isSelf: boolean
+}
 
 export type ScreenerTopRatios = {
   marketCap?: number
@@ -21,6 +38,8 @@ export type ScreenerTopRatios = {
 
 export type ScreenerDetail = {
   sourceUrl: string
+  companyId: string | null
+  warehouseId: string | null
   topRatios: ScreenerTopRatios
   profitLoss: DetailTable | null
   quarters: DetailTable | null
@@ -28,6 +47,9 @@ export type ScreenerDetail = {
   cashFlow: DetailTable | null
   ratios: DetailTable | null
   shareholding: { quarterly: DetailTable | null; yearly: DetailTable | null }
+  /** null = never fetched, [] = fetched but empty/unavailable. */
+  peers: PeerRow[] | null
+  peersError: string | null
 }
 
 function cleanLabel(raw: string): string {
@@ -141,8 +163,11 @@ export function findRow(table: DetailTable | null, label: string): DetailRow | u
 
 export function parseScreenerDetail(html: string, sourceUrl: string): ScreenerDetail {
   const $ = cheerio.load(html)
+  const info = parseCompanyInfo($)
   return {
     sourceUrl,
+    companyId: info.companyId,
+    warehouseId: info.warehouseId,
     topRatios: parseTopRatios($),
     profitLoss: firstTable($, '#profit-loss'),
     quarters: firstTable($, '#quarters'),
@@ -150,5 +175,93 @@ export function parseScreenerDetail(html: string, sourceUrl: string): ScreenerDe
     cashFlow: firstTable($, '#cash-flow'),
     ratios: firstTable($, '#ratios'),
     shareholding: parseShareholding($),
+    peers: null,
+    peersError: null,
   }
+}
+
+function parseCompanyInfo($: cheerio.CheerioAPI): { companyId: string | null; warehouseId: string | null } {
+  const el = $('#company-info').first()
+  return {
+    companyId: el.attr('data-company-id') ?? null,
+    warehouseId: el.attr('data-warehouse-id') ?? null,
+  }
+}
+
+/** Screener's own peer-table labels (data-tooltip) mapped to our numeric fields. */
+type NumericPeerKey = 'cmp' | 'pe' | 'marketCap' | 'dividendYield' | 'netProfitQtr' | 'profitGrowth' | 'salesQtr' | 'salesGrowth' | 'roce'
+
+const PEER_TOOLTIP_FIELDS: Record<string, NumericPeerKey> = {
+  'current price': 'cmp',
+  'price to earning': 'pe',
+  'market capitalization': 'marketCap',
+  'dividend yield': 'dividendYield',
+  'net profit latest quarter': 'netProfitQtr',
+  'yoy quarterly profit growth': 'profitGrowth',
+  'sales latest quarter': 'salesQtr',
+  'yoy quarterly sales growth': 'salesGrowth',
+  'return on capital employed': 'roce',
+}
+
+/**
+ * Parse the HTML returned by `/api/company/{warehouseId}/peers/`. The table's
+ * first data row is the company whose page we requested (marked `isSelf`).
+ */
+export function parsePeers(html: string, selfCompanyId?: string | null): PeerRow[] {
+  const $ = cheerio.load(html)
+  const table = $('table').first()
+  if (!table.length) return []
+
+  const headerRow = table.find('tr').first().find('th')
+  const columns: (NumericPeerKey | 'name' | 'skip')[] = headerRow
+    .map((_, th) => {
+      const tooltip = ($(th).attr('data-tooltip') ?? '').toLowerCase().trim()
+      if (tooltip && PEER_TOOLTIP_FIELDS[tooltip]) return PEER_TOOLTIP_FIELDS[tooltip]
+      if (textOf($(th)).toLowerCase().includes('company')) return 'name'
+      return 'skip'
+    })
+    .get()
+
+  const peers: PeerRow[] = []
+  table.find('tr[data-row-company-id]').each((_, tr) => {
+    const cells = $(tr).find('td')
+    if (!cells.length) return
+    const companyId = $(tr).attr('data-row-company-id') ?? null
+    const row: PeerRow = {
+      companyId,
+      name: '',
+      symbol: null,
+      href: null,
+      cmp: null,
+      pe: null,
+      marketCap: null,
+      dividendYield: null,
+      netProfitQtr: null,
+      profitGrowth: null,
+      salesQtr: null,
+      salesGrowth: null,
+      roce: null,
+      isSelf: Boolean(selfCompanyId && companyId && companyId === selfCompanyId),
+    }
+
+    cells.each((index, cell) => {
+      const column = columns[index]
+      if (!column || column === 'skip') return
+      if (column === 'name') {
+        const anchor = $(cell).find('a').first()
+        row.name = textOf($(cell))
+        const href = anchor.attr('href') ?? null
+        row.href = href
+        row.symbol = symbolFromCompanyHref(href)
+        return
+      }
+      row[column] = parseNumber(textOf($(cell)))
+    })
+
+    if (row.name) peers.push(row)
+  })
+
+  // Fall back to "first row is self" when the page did not expose a company id.
+  if (!selfCompanyId && peers.length) peers[0].isSelf = true
+  return peers
 }

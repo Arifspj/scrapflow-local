@@ -88,7 +88,8 @@ export async function ensureStockDetail(symbol: string): Promise<StockWithDetail
   const stock = await loadStockWithDetail(symbol)
   if (!stock) return null
 
-  if (isScreenerDetail(stock.fundamentals[0]?.rawData)) return stock
+  const rawData = stock.fundamentals[0]?.rawData
+  if (isScreenerDetail(rawData) && rawData.peers != null) return stock
 
   try {
     const company = await scrapeScreenerCompany(symbol)

@@ -1,9 +1,37 @@
 import { cleanSymbol, parseScreenerCompany, parseScreenerSearchResults, pickCompanyFromSearchResults, symbolFromCompanyHref, typoCandidates, type ScreenerSearchResult } from './screener'
-import { findRow, latestRowNumber, parseScreenerDetail, type ScreenerDetail } from './screener-detail'
+import { findRow, latestRowNumber, parsePeers, parseScreenerDetail, type ScreenerDetail } from './screener-detail'
 import { screenerFetchText } from './screener-auth'
 import type { ParsedFundamental } from './types'
 
 const SCREENER_BASE = 'https://www.screener.in'
+
+/**
+ * Fetch and attach the peer-comparison table for a company. Best-effort: on any
+ * failure we record an error and mark peers as an empty (attempted) list so the
+ * page never retries on every render.
+ */
+async function attachPeers(detail: ScreenerDetail): Promise<void> {
+  if (!detail.warehouseId) {
+    detail.peers = []
+    detail.peersError = 'Peer data unavailable (no warehouse id on the company page).'
+    return
+  }
+  try {
+    const url = `${SCREENER_BASE}/api/company/${encodeURIComponent(detail.warehouseId)}/peers/`
+    const peerHtml = await screenerFetchText(url)
+    if (!peerHtml) {
+      detail.peers = []
+      detail.peersError = 'Peer request failed.'
+      return
+    }
+    const peers = parsePeers(peerHtml, detail.companyId)
+    detail.peers = peers
+    detail.peersError = peers.length ? null : 'No peer rows were returned.'
+  } catch (error) {
+    detail.peers = []
+    detail.peersError = error instanceof Error ? error.message : 'Peer request failed.'
+  }
+}
 
 export type ScrapedCompany = {
   symbol: string
@@ -96,6 +124,7 @@ export async function scrapeScreenerCompany(query: string): Promise<ScrapedCompa
   const resolved = base.symbols[0]
   const finalSymbol = resolved?.symbol ?? symbol
   const detail = parseScreenerDetail(html, sourceUrl)
+  await attachPeers(detail)
   const fundamentals = deriveFundamentals(detail)
   if (!resolved && !Object.keys(fundamentals).length) return null
 

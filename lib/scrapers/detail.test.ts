@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deriveFundamentals } from './resolve'
-import { findRow, latestRowNumber, parseScreenerDetail } from './screener-detail'
+import { findRow, latestRowNumber, parsePeers, parseScreenerDetail } from './screener-detail'
 import {
   buildBadges,
   buildChartSeries,
@@ -98,5 +98,59 @@ describe('stock-detail helpers', () => {
     expect(isScreenerDetail(detail)).toBe(true)
     expect(isScreenerDetail({ marketCap: 4160, peRatio: 19.6 })).toBe(false)
     expect(isScreenerDetail(null)).toBe(false)
+  })
+})
+
+const PEERS_HTML = `<div data-page-results><table class="data-table"><tbody>
+<tr>
+  <th class="text">S.No.</th>
+  <th class="text">Company</th>
+  <th data-tooltip="Current Price">CMP <span>Rs.</span></th>
+  <th data-tooltip="Price to Earning">P/E</th>
+  <th data-tooltip="Market Capitalization">Mar Cap <span>Rs.Cr.</span></th>
+  <th data-tooltip="Dividend yield">Div Yld <span>%</span></th>
+  <th data-tooltip="Net Profit latest quarter">NP Qtr</th>
+  <th data-tooltip="YOY Quarterly profit growth">Qtr Profit Var <span>%</span></th>
+  <th data-tooltip="Sales latest quarter">Sales Qtr</th>
+  <th data-tooltip="YOY Quarterly sales growth">Qtr Sales Var <span>%</span></th>
+  <th data-tooltip="Return on capital employed">ROCE <span>%</span></th>
+</tr>
+<tr data-row-company-id="2726">
+  <td class="text">1.</td>
+  <td class="text"><a href="/company/RELIANCE/" target="_blank">Reliance Industries</a></td>
+  <td>1158.90</td><td>39.97</td><td>1567615.73</td><td>0.52</td><td>13272.00</td><td>32.25</td><td>163631.00</td><td>40.65</td><td>7.78</td>
+</tr>
+<tr data-row-company-id="1448">
+  <td class="text">2.</td>
+  <td class="text"><a href="/company/IOC/consolidated/" target="_blank">I O C L</a></td>
+  <td>125.35</td><td>5.26</td><td>176869.74</td><td>6.58</td><td>-1141.09</td><td>-123.93</td><td>266407.28</td><td></td><td>18.66</td>
+</tr>
+</tbody><tfoot><tr><td></td><td class="text">Median: 9 Co.</td><td>173.72</td><td>9.82</td><td>30451.45</td><td>2.3</td><td>4.46</td><td>7.87</td><td>38254.19</td><td>36.46</td><td>19.34</td></tr></tfoot></table></div>`
+
+describe('parsePeers', () => {
+  const peers = parsePeers(PEERS_HTML, '2726')
+
+  it('maps peer columns by their data-tooltip, not by guessing', () => {
+    expect(peers).toHaveLength(2)
+    expect(peers[0]).toMatchObject({
+      name: 'Reliance Industries',
+      symbol: 'RELIANCE',
+      cmp: 1158.9,
+      pe: 39.97,
+      marketCap: 1567615.73,
+      dividendYield: 0.52,
+      profitGrowth: 32.25,
+      salesGrowth: 40.65,
+      roce: 7.78,
+      isSelf: true,
+    })
+  })
+
+  it('marks the requested company and keeps empty cells null', () => {
+    expect(peers[1]).toMatchObject({ symbol: 'IOC', isSelf: false, salesGrowth: null, profitGrowth: -123.93 })
+  })
+
+  it('ignores the median footer row', () => {
+    expect(peers.some((peer) => peer.name.includes('Median'))).toBe(false)
   })
 })
