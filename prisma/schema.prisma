@@ -7,4 +7,128 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Step 2.1 only: application tables are intentionally added in the next step.
+enum ScannerSourceType {
+  CHARTINK_SCAN
+  SCREENER_SCREEN
+  SCREENER_COMPANY
+}
+
+enum PipelineMode {
+  LIST_ONLY
+  LIST_AND_FUNDAMENTALS
+}
+
+enum FetchRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+}
+
+model Scanner {
+  id          String          @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  enabled     Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  sources     ScannerSource[]
+  stocks      ScannerStock[]
+
+  @@index([enabled])
+  @@index([category])
+}
+
+model ScannerSource {
+  id            String            @id @default(cuid())
+  scannerId     String
+  type          ScannerSourceType
+  url           String
+  pipelineMode  PipelineMode      @default(LIST_ONLY)
+  enabled       Boolean           @default(true)
+  fetchInterval Int               @default(3600)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  scanner       Scanner           @relation(fields: [scannerId], references: [id], onDelete: Cascade)
+  fetchRuns     FetchRun[]
+  scannerStocks ScannerStock[]
+
+  @@unique([scannerId, type, url])
+  @@index([enabled, fetchInterval])
+  @@index([scannerId])
+}
+
+model Stock {
+  id          String                    @id @default(cuid())
+  symbol      String                    @unique
+  companyName String?
+  isin        String?
+  exchange    String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  scanners    ScannerStock[]
+  fundamentals StockFundamentalSnapshot[]
+
+  @@index([companyName])
+}
+
+model ScannerStock {
+  id          String         @id @default(cuid())
+  scannerId   String
+  stockId     String
+  sourceId    String?
+  firstSeenAt DateTime       @default(now())
+  lastSeenAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  scanner     Scanner        @relation(fields: [scannerId], references: [id], onDelete: Cascade)
+  stock       Stock          @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  source      ScannerSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([scannerId, stockId])
+  @@index([sourceId])
+  @@index([scannerId, lastSeenAt])
+}
+
+model FetchRun {
+  id            String        @id @default(cuid())
+  sourceId      String
+  startedAt     DateTime      @default(now())
+  endedAt       DateTime?
+  status        FetchRunStatus @default(PENDING)
+  itemsFound    Int           @default(0)
+  itemsCreated  Int           @default(0)
+  itemsUpdated  Int           @default(0)
+  errorSummary  String?
+  diagnostics   Json?
+  parserVersion String?
+  sourceUrl     String
+  source        ScannerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, startedAt])
+  @@index([status, startedAt])
+}
+
+model StockFundamentalSnapshot {
+  id             String   @id @default(cuid())
+  stockId        String
+  capturedAt     DateTime @default(now())
+  marketCap      Decimal? @db.Decimal(20, 2)
+  peRatio        Decimal? @db.Decimal(12, 4)
+  bookValue      Decimal? @db.Decimal(20, 4)
+  dividendYield  Decimal? @db.Decimal(12, 4)
+  roce           Decimal? @db.Decimal(12, 4)
+  roe            Decimal? @db.Decimal(12, 4)
+  debtToEquity   Decimal? @db.Decimal(12, 4)
+  revenue        Decimal? @db.Decimal(20, 2)
+  netProfit      Decimal? @db.Decimal(20, 2)
+  rawData        Json?
+  sourceUrl      String?
+  parserVersion  String?
+  stock          Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, capturedAt])
+  @@unique([stockId, capturedAt])
+}
