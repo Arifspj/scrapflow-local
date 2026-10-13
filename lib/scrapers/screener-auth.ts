@@ -105,3 +105,68 @@ export async function screenerFetchText(url: string, timeoutMs = 15000): Promise
     return null
   }
 }
+
+export type PoliteFetchResult = {
+  html: string | null
+  status: number
+  /** True when the source asked us to back off / blocked us and we stopped. */
+  stopped: boolean
+  reason?: string
+}
+
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get('retry-after')
+  if (!header) return null
+  const seconds = Number(header)
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, 30_000)
+  const date = Date.parse(header)
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 30_000)
+  return null
+}
+
+/**
+ * Fetch a screener.in page while respecting the source:
+ *  - `429` waits for `Retry-After` (capped) and retries a bounded number of times,
+ *    then stops;
+ *  - `403` stops immediately (no bypass, no spoofing);
+ *  - any other failure is reported to the caller which records it honestly.
+ * The same rate limiter and session cookie as `screenerFetchText` are reused.
+ */
+export async function screenerFetchPolite(
+  url: string,
+  options: { maxRetries?: number; timeoutMs?: number } = {},
+): Promise<PoliteFetchResult> {
+  const maxRetries = Math.max(0, options.maxRetries ?? 2)
+  const timeoutMs = options.timeoutMs ?? 15000
+
+  const cookie = await getScreenerCookie().catch(() => null)
+  const requestHeaders: Record<string, string> = { 'user-agent': SCREENER_UA }
+  if (cookie) requestHeaders.cookie = cookie
+
+  let attempt = 0
+  while (true) {
+    let response: Response
+    try {
+      response = await fetch(url, { headers: requestHeaders, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) })
+    } catch (error) {
+      return { html: null, status: 0, stopped: false, reason: error instanceof Error ? error.message : 'Fetch failed.' }
+    }
+
+    if (response.status === 403) {
+      return { html: null, status: 403, stopped: true, reason: 'Source returned 403 (forbidden); stopping without attempting a bypass.' }
+    }
+    if (response.status === 429) {
+      if (attempt >= maxRetries) {
+        return { html: null, status: 429, stopped: true, reason: 'Source is rate limiting (429) and the retry budget is exhausted.' }
+      }
+      const wait = retryAfterMs(response) ?? 2000 * (attempt + 1)
+      await new Promise((resolve) => setTimeout(resolve, wait))
+      attempt += 1
+      continue
+    }
+    if (!response.ok) {
+      return { html: null, status: response.status, stopped: false }
+    }
+    return { html: await response.text(), status: response.status, stopped: false }
+  }
+}

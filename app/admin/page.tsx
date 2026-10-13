@@ -1,71 +1,648 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ArrowUpRight, BarChart3, Check, ChevronDown, Clock3, Database, ExternalLink, FileText, Gem, Globe2, LoaderCircle, Menu, Moon, MoreVertical, Plus, Search, Settings, SlidersHorizontal, Star, Trophy, Users, X, Zap } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Activity,
+  BarChart3,
+  Beaker,
+  Check,
+  Clock3,
+  Database,
+  FileText,
+  Globe2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  ShieldAlert,
+  Star,
+  Trash2,
+  X,
+} from 'lucide-react'
 
-type Source = { id: string; name: string; type: string; url: string; status: 'Sample/Test' | 'Not tested'; lastFetch: string; stocks: string; enabled: boolean }
-type Scanner = { name: string; description: string; links: number; icon: typeof Gem; tone: string; status: string; sources: Source[] }
+const SECRET_KEY = 'qscan:admin-secret'
 
-const sampleSources: Source[] = [
-  { id: 'chartink-volume', name: 'Stocks Rising with Volume', type: 'Chartink technical scan', url: 'https://chartink.com/screener/stocks-rising-with-volume', status: 'Sample/Test', lastFetch: 'Not fetched yet', stocks: '—', enabled: true },
-  { id: 'chartink-buy', name: 'Buy Rising Stocks', type: 'Chartink technical scan', url: 'https://chartink.com/screener/buy-rising-stocks', status: 'Sample/Test', lastFetch: 'Not fetched yet', stocks: '—', enabled: true },
-  { id: 'screener-growth', name: 'Sales Growth Screen', type: 'Screener public screen', url: 'https://www.screener.in/screens/1869860/sales-growth-screen/', status: 'Sample/Test', lastFetch: 'Not fetched yet', stocks: '—', enabled: true },
-  { id: 'reliance', name: 'Reliance Fundamentals', type: 'Screener company page', url: 'https://www.screener.in/company/RELIANCE/', status: 'Sample/Test', lastFetch: 'Not fetched yet', stocks: '—', enabled: true },
+type SourceRun = { status: string; endedAt: string | null; itemsFound: number; errorSummary: string | null } | null
+type Source = {
+  id: string
+  type: string
+  kind: string | null
+  kindLabel: string
+  url: string
+  pipelineMode: 'LIST_ONLY' | 'LIST_AND_FUNDAMENTALS'
+  enabled: boolean
+  fetchInterval: number
+  lastRun: SourceRun
+}
+type Scanner = {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  enabled: boolean
+  memberCount: number
+  sources: Source[]
+}
+type Summary = { scanners: number; stocks: number; lastRun: { status: string; startedAt: string; endedAt: string | null } | null }
+type StockRow = {
+  symbol: string
+  companyName: string | null
+  marketCap: number | null
+  pe: number | null
+  roce: number | null
+  roe: number | null
+  capturedAt: string | null
+  scanners: string[]
+}
+type RunRow = {
+  id: string
+  scanner: string
+  sourceUrl: string
+  status: string
+  startedAt: string
+  endedAt: string | null
+  itemsFound: number
+  itemsCreated: number
+  itemsUpdated: number
+  parserVersion: string | null
+  errorSummary: string | null
+}
+type Preview = { ok: boolean; kindLabel?: string; status: number; stopped: boolean; symbolCount: number; rows: { symbol: string; companyName: string | null }[]; warnings: string[]; message: string }
+
+const SUGGESTIONS = [
+  ['Value stocks', 'https://www.screener.in/screens/184/value-stocks/'],
+  ['Piotroski scan', 'https://www.screener.in/screens/2/piotroski-scan/'],
+  ['Multibagger stocks', 'https://www.screener.in/screens/60880/multibagger-stocks/'],
+  ['Breakout stocks', 'https://www.screener.in/screens/209239/breakout-stocks/'],
+  ['Coffee can portfolio', 'https://www.screener.in/screens/57601/coffee-can-portfolio/'],
+  ['High dividend yield', 'https://www.screener.in/screens/3/highest-dividend-yield-shares/'],
+] as const
+
+const navItems = [
+  { label: 'Scanner Management', icon: Globe2 },
+  { label: 'View Stocks (DB)', icon: BarChart3 },
+  { label: 'Fetch Logs', icon: FileText },
+  { label: 'System Settings', icon: Settings },
 ]
 
-const scanners: Scanner[] = [
-  { name: 'Undervalued Scanner', description: 'Value-oriented screens and fundamental checks.', links: 12, icon: Gem, tone: 'text-sky-400 bg-sky-400/10', status: 'Success', sources: sampleSources },
-  { name: 'IPO Scanner', description: 'New listings and upcoming public offerings.', links: 6, icon: Zap, tone: 'text-fuchsia-400 bg-fuchsia-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Multibagger Scanner', description: 'Long-term growth candidates.', links: 8, icon: Trophy, tone: 'text-amber-400 bg-amber-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Split Scanner', description: 'Corporate actions and split activity.', links: 4, icon: Database, tone: 'text-cyan-400 bg-cyan-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Penny Stocks Scanner', description: 'Small-cap discovery screens.', links: 10, icon: BarChart3, tone: 'text-orange-400 bg-orange-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Business Group Scanner', description: 'Business and sector group scans.', links: 7, icon: Users, tone: 'text-violet-400 bg-violet-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Upper Circuit Scan', description: 'Upper circuit movement monitoring.', links: 5, icon: ArrowUpRight, tone: 'text-emerald-400 bg-emerald-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Sector Scanner', description: 'Sector rotation and relative strength.', links: 9, icon: SlidersHorizontal, tone: 'text-blue-400 bg-blue-400/10', status: 'Not fetched', sources: [] },
-  { name: 'Watchlist', description: 'Curated symbols for manual review.', links: 3, icon: Star, tone: 'text-yellow-400 bg-yellow-400/10', status: 'Not fetched', sources: [] },
-]
-const navItems = [{ label: 'Scanner Management', icon: ServerIcon }, { label: 'View Stocks (DB)', icon: BarChart3 }, { label: 'Cron Job / Scheduler', icon: Clock3 }, { label: 'Fetch Logs', icon: FileText }, { label: 'System Settings', icon: Settings }]
-function ServerIcon() { return <Globe2 className="size-4" /> }
+function n(value: number | null, suffix = ''): string {
+  return value == null ? '—' : `${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}${suffix}`
+}
 
-export default function Page() {
+function when(value: string | null): string {
+  if (!value) return 'never'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'never' : date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+const statusTone: Record<string, string> = {
+  SUCCEEDED: 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
+  PARTIAL: 'text-amber-300 bg-amber-400/10 border-amber-400/20',
+  FAILED: 'text-rose-300 bg-rose-400/10 border-rose-400/20',
+  RUNNING: 'text-sky-300 bg-sky-400/10 border-sky-400/20',
+  PENDING: 'text-slate-300 bg-white/5 border-white/10',
+}
+
+export default function AdminPage() {
+  const [secret, setSecret] = useState('')
+  const [authorized, setAuthorized] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const [scanners, setScanners] = useState<Scanner[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [stocks, setStocks] = useState<StockRow[]>([])
+  const [runs, setRuns] = useState<RunRow[]>([])
+
   const [activeNav, setActiveNav] = useState('Scanner Management')
-  const [activeScanner, setActiveScanner] = useState(scanners[0].name)
+  const [activeScannerId, setActiveScannerId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [tab, setTab] = useState('Links')
-  const [showCreate, setShowCreate] = useState(false)
-  const [testing, setTesting] = useState<string | null>(null)
+  const [stockQuery, setStockQuery] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
-  const selected = scanners.find((scanner) => scanner.name === activeScanner) ?? scanners[0]
-  const filtered = useMemo(() => scanners.filter((s) => s.name.toLowerCase().includes(query.toLowerCase())), [query])
+  const [preview, setPreview] = useState<Preview | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [addUrl, setAddUrl] = useState('')
+  const [addMode, setAddMode] = useState<'LIST_ONLY' | 'LIST_AND_FUNDAMENTALS'>('LIST_ONLY')
 
-  async function testSource(source: Source) {
-    setTesting(source.id); setNotice('')
+  const selected = scanners.find((scanner) => scanner.id === activeScannerId) ?? scanners[0] ?? null
+  const filteredScanners = useMemo(() => scanners.filter((scanner) => scanner.name.toLowerCase().includes(query.toLowerCase())), [scanners, query])
+
+  const api = useCallback(
+    async (path: string, init?: RequestInit) => {
+      const response = await fetch(path, {
+        ...init,
+        headers: { 'content-type': 'application/json', 'x-admin-secret': secret, ...(init?.headers ?? {}) },
+      })
+      if (response.status === 401) throw new Error('unauthorized')
+      return response
+    },
+    [secret],
+  )
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
     try {
-      const response = await fetch('/api/sources/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: source.url, type: source.type }) })
-      const result = await response.json()
-      setNotice(response.ok ? `${source.name}: ${result.symbolCount} symbols previewed. No database records were changed.` : `${source.name}: ${result.error}`)
-    } catch { setNotice(`${source.name}: Test could not be completed.`) } finally { setTesting(null) }
+      const [scannersRes, stocksRes, runsRes] = await Promise.all([
+        api('/api/admin/scanners'),
+        api('/api/admin/stocks'),
+        api('/api/admin/runs'),
+      ])
+      if (!scannersRes.ok) throw new Error((await scannersRes.json().catch(() => ({}))).error || 'Could not load scanners.')
+      const scannersJson = await scannersRes.json()
+      setScanners(scannersJson.scanners ?? [])
+      setSummary(scannersJson.summary ?? null)
+      setStocks((await stocksRes.json()).stocks ?? [])
+      setRuns((await runsRes.json()).runs ?? [])
+      setAuthorized(true)
+      setAuthError('')
+    } catch (caught) {
+      if (caught instanceof Error && caught.message === 'unauthorized') {
+        setAuthorized(false)
+        setAuthError('Incorrect admin secret.')
+      } else {
+        setError(caught instanceof Error ? caught.message : 'Failed to load admin data.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SECRET_KEY)
+      if (saved) setSecret(saved)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (secret && !authorized && !authError) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secret])
+
+  useEffect(() => {
+    if (!selected && scanners.length) setActiveScannerId(scanners[0].id)
+  }, [scanners, selected])
+
+  function connect() {
+    if (!secret.trim()) {
+      setAuthError('Enter the ADMIN_SECRET value configured on the server.')
+      return
+    }
+    try {
+      window.localStorage.setItem(SECRET_KEY, secret)
+    } catch {
+      /* ignore */
+    }
+    void load()
   }
 
-  return <main className="flex min-h-screen overflow-x-hidden bg-[#080c15] text-slate-300 selection:bg-blue-500/30">
-    <aside className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-white/[0.07] bg-[#0b101b] transition-transform lg:static lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-      <div className="flex items-center justify-between px-5 py-5"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-400/10 text-emerald-300"><BarChart3 className="size-5" /></div><div><p className="font-semibold tracking-tight text-white">Q-Scan</p><p className="text-[11px] text-slate-500">Admin Panel</p></div></div><button onClick={() => setMobileMenuOpen(false)} className="rounded-lg p-2 text-slate-500 lg:hidden" aria-label="Close navigation"><X className="size-4" /></button></div>
-      <div className="flex-1 overflow-y-auto px-3 pb-4"><nav aria-label="Primary navigation" className="flex flex-col gap-1">{navItems.map(({ label, icon: Icon }) => <button key={label} onClick={() => { setActiveNav(label); setMobileMenuOpen(false) }} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-medium ${activeNav === label ? 'border border-blue-400/25 bg-blue-500/15 text-sky-300' : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-200'}`}><Icon />{label}</button>)}</nav><p className="mt-8 px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600">Scanner List</p><div className="flex flex-col gap-0.5">{scanners.map((scanner) => { const Icon = scanner.icon; return <button key={scanner.name} onClick={() => setActiveScanner(scanner.name)} className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs ${activeScanner === scanner.name ? 'bg-blue-500/15 text-white' : 'text-slate-500 hover:bg-white/[0.04]'}`}><span className="flex min-w-0 items-center gap-3"><Icon className={`size-3.5 ${scanner.tone.split(' ')[0]}`} /><span className="truncate">{scanner.name}</span></span><span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px]">{scanner.sources.length}</span></button> })}</div></div>
-      <div className="m-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3 text-[11px]"><div className="mb-3 flex items-center gap-2 border-b border-white/[0.07] pb-2 font-semibold text-slate-300"><Database className="size-3.5 text-sky-400" />Database Info</div><div className="flex flex-col gap-2 text-slate-500"><div className="flex justify-between"><span>Total Scanners</span><b className="text-white">{scanners.length}</b></div><div className="flex justify-between"><span>Configured Links</span><b className="text-white">{scanners.reduce((n, s) => n + s.sources.length, 0)}</b></div><div className="flex justify-between"><span>Stocks in DB</span><b className="text-slate-400">Not loaded</b></div></div></div>
-    </aside>
-    {mobileMenuOpen && <button className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation overlay" />}
-    <section className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b border-white/[0.07] bg-[#0b101b] px-4 sm:px-6"><button className="rounded-lg p-2 text-slate-400 lg:hidden" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu className="size-5" /></button><div className="ml-auto flex items-center gap-3"><button className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs sm:flex">Visit Website <ExternalLink className="size-3" /></button><button className="rounded-lg border border-white/10 bg-white/[0.04] p-2 text-amber-300" aria-label="Toggle theme"><Moon className="size-3.5" /></button><span className="flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">A</span></div></header>
-      <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8"><div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-xs font-medium text-sky-400">Operations / {activeNav}</p><h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">{activeNav}</h1><p className="mt-1.5 max-w-2xl text-xs leading-5 text-slate-500">Manage source links, preview extraction results, and keep fetch history honest.</p></div><button onClick={() => setShowCreate(true)} className="flex items-center gap-2 self-start rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-blue-500"><Plus className="size-3.5" />Create scanner</button></div>
-        <div className="mb-5 grid gap-3 sm:grid-cols-3"><Stat label="Active scanners" value={String(scanners.length)} detail="Configured in this workspace" tone="text-emerald-400" /><Stat label="Stocks in database" value="Not loaded" detail="Connect a fetch result to populate" tone="text-sky-400" /><Stat label="Last successful run" value="Not fetched yet" detail="No fabricated run data" tone="text-amber-300" /></div>
-        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="text-sm font-semibold text-white">Scanner configurations</h2><p className="mt-1 text-xs text-slate-600">Select a scanner to manage its source links and run history.</p></div><div className="relative"><Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-600" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search scanners" className="w-full rounded-lg border border-white/10 bg-white/[0.03] py-2 pl-9 pr-3 text-xs text-slate-200 outline-none sm:w-56" /></div></div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{filtered.map((scanner) => { const Icon = scanner.icon; return <button key={scanner.name} onClick={() => { setActiveScanner(scanner.name); setTab('Links') }} className={`group rounded-xl border p-4 text-left transition ${activeScanner === scanner.name ? 'border-blue-500/50 bg-blue-500/[0.07] shadow-lg shadow-blue-950/20' : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15'}`}><div className="flex items-start justify-between"><span className={`flex size-9 items-center justify-center rounded-lg ${scanner.tone}`}><Icon className="size-4" /></span><MoreVertical className="size-4 text-slate-600" /></div><p className="mt-4 text-xs font-semibold text-white">{scanner.name}</p><p className="mt-1 text-[11px] text-slate-500">{scanner.sources.length} configured source links</p><div className="mt-5 flex items-center justify-between border-t border-white/[0.07] pt-3 text-[10px]"><span className="text-slate-600">{scanner.status}</span><span className="rounded-full border border-white/10 px-2 py-1 text-slate-400">{activeScanner === scanner.name ? 'Selected' : 'Open'}</span></div></button> })}</div>
-        <section className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.025]" aria-label="Selected scanner details"><div className="flex flex-col justify-between gap-4 border-b border-white/[0.07] p-5 sm:flex-row sm:items-start"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400">Selected scanner</p><h2 className="mt-2 text-xl font-semibold text-white">{selected.name}</h2><p className="mt-1 text-xs text-slate-500">{selected.description}</p></div><div className="flex flex-wrap gap-2 text-[11px]"><Badge label="Enabled" /><Badge label={`${selected.sources.length} links`} /><Badge label="Stocks: not loaded" /></div></div><div className="flex gap-1 overflow-x-auto border-b border-white/[0.07] px-4 pt-3">{['Links', 'Settings', 'Schedule / Cron', 'Fetch History', 'Preview Data'].map((name) => <button key={name} onClick={() => setTab(name)} className={`whitespace-nowrap rounded-t-lg px-3 py-2 text-xs ${tab === name ? 'border-b-2 border-blue-400 text-white' : 'text-slate-500 hover:text-slate-200'}`}>{name}</button>)}</div>{tab === 'Links' ? <div className="p-4"><div className="mb-4 flex items-center justify-between"><div><h3 className="text-sm font-semibold text-white">Source links</h3><p className="mt-1 text-xs text-slate-600">Test a source to preview symbols. Tests never import data.</p></div><button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs text-sky-300"><Plus className="size-3.5" />Add new link</button></div>{notice && <div className="mb-4 rounded-lg border border-sky-400/20 bg-sky-400/10 p-3 text-xs text-sky-200">{notice}</div>}{selected.sources.length ? <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-slate-600"><tr><th className="pb-3">Source</th><th className="pb-3">Type</th><th className="pb-3">Status</th><th className="pb-3">Last fetch</th><th className="pb-3">Stocks</th><th className="pb-3 text-right">Actions</th></tr></thead><tbody>{selected.sources.map((source) => <tr key={source.id} className="border-t border-white/[0.06]"><td className="py-3"><p className="font-medium text-slate-200">{source.name}</p><a href={source.url} target="_blank" rel="noreferrer" className="mt-1 block max-w-[260px] truncate text-[10px] text-slate-600 hover:text-sky-400">{source.url}</a></td><td className="py-3 text-slate-500">{source.type}</td><td className="py-3"><span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-[10px] text-amber-300">{source.status}</span></td><td className="py-3 text-slate-500">{source.lastFetch}</td><td className="py-3 text-slate-500">{source.stocks}</td><td className="py-3 text-right"><button onClick={() => testSource(source)} disabled={testing === source.id} className="rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-white/5 disabled:opacity-50">{testing === source.id ? <LoaderCircle className="inline size-3 animate-spin" /> : 'Test'}</button><button onClick={() => setNotice('Fetch Now is available after a successful preview/import confirmation.')} className="ml-2 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-500">Fetch</button></td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-white/10 py-12 text-center text-xs text-slate-500">No links configured for this scanner.</div>}</div> : <TabPanel tab={tab} />}</section>
-      </div></section>
-    {showCreate && <CreateModal onClose={() => setShowCreate(false)} />}
-  </main>
+  async function addSource() {
+    if (!selected || !addUrl.trim()) return
+    setBusy('add')
+    setNotice('')
+    try {
+      const response = await api('/api/admin/sources', {
+        method: 'POST',
+        body: JSON.stringify({ scannerId: selected.id, url: addUrl.trim(), pipelineMode: addMode }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || 'Could not add source.')
+      setShowAdd(false)
+      setAddUrl('')
+      setNotice(`Added ${preview?.kindLabel ?? 'source'} to ${selected.name}.`)
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to add source.')
+    }
+  }
+
+  async function testSource(source: Source) {
+    setBusy(`test:${source.id}`)
+    setPreview(null)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/sources/${source.id}/test`, { method: 'POST' })
+      setPreview(await response.json())
+    } catch {
+      setNotice('Preview request failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function importSource(source: Source) {
+    setBusy(`import:${source.id}`)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/sources/${source.id}/import`, { method: 'POST' })
+      const json = await response.json()
+      setNotice(`${source.kindLabel}: ${json.status} — ${json.message}`)
+      await load()
+    } catch {
+      setNotice('Import request failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function toggleSource(source: Source) {
+    setBusy(`toggle:${source.id}`)
+    try {
+      await api(`/api/admin/sources/${source.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !source.enabled }) })
+      await load()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function deleteSource(source: Source) {
+    setBusy(`delete:${source.id}`)
+    try {
+      await api(`/api/admin/sources/${source.id}`, { method: 'DELETE' })
+      await load()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  if (!authorized) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#050b14] px-4 text-slate-300">
+        <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="flex items-center gap-2 text-white">
+            <ShieldAlert className="size-5 text-sky-400" />
+            <h1 className="text-base font-semibold">Admin access</h1>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Enter the <code className="text-slate-300">ADMIN_SECRET</code> configured on the server. It is stored only in this browser.
+          </p>
+          <form
+            className="mt-5 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              window.localStorage.setItem(SECRET_KEY, secret)
+              void load()
+            }}
+          >
+            <input
+              type="password"
+              value={secret}
+              onChange={(event) => setSecret(event.target.value)}
+              placeholder="ADMIN_SECRET"
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500"
+            />
+            {authError && <p className="text-xs text-rose-300">{authError}</p>}
+            <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+              {loading ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} Unlock
+            </button>
+          </form>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-[#050b14] text-slate-300">
+      <header className="sticky top-0 z-20 border-b border-[#122238] bg-[#071120]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1720px] items-center justify-between gap-4 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-tr from-sky-600 to-emerald-500 text-lg font-bold text-white">Q</span>
+            <span>
+              <b className="block text-base tracking-tight text-white">Q-Scan Admin</b>
+              <small className="text-[10px] text-slate-400">Scanner ingestion & scheduler</small>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="/" className="rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 hover:text-white">Public site</a>
+            <button onClick={() => load()} className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5">
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} Refresh
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto grid max-w-[1720px] gap-4 px-4 py-4 lg:grid-cols-[240px_1fr]">
+        <aside className="space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const active = activeNav === item.label
+            return (
+              <button
+                key={item.label}
+                onClick={() => setActiveNav(item.label)}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs ${active ? 'bg-sky-500/15 text-white' : 'text-slate-400 hover:bg-white/5'}`}
+              >
+                <Icon className="size-4" /> {item.label}
+              </button>
+            )
+          })}
+        </aside>
+
+        <section className="min-w-0 space-y-4">
+          {error && <div className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-xs text-rose-200">{error}</div>}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="Scanners" value={String(summary?.scanners ?? scanners.length)} detail="canonical + custom" tone="text-sky-400" />
+            <Stat label="Stocks in database" value={String(summary?.stocks ?? stocks.length)} detail="persisted Stock rows" tone="text-emerald-300" />
+            <Stat label="Last run" value={summary?.lastRun ? summary.lastRun.status : 'never'} detail={when(summary?.lastRun?.startedAt ?? null)} tone="text-amber-300" />
+          </div>
+
+          {notice && <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-3 text-xs text-sky-200">{notice}</div>}
+
+          {activeNav === 'Scanner Management' && (
+            <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+              <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-600" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search scanners" className="w-full rounded-lg border border-white/10 bg-black/20 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none" />
+                </div>
+                <div className="space-y-1">
+                  {filteredScanners.map((scanner) => (
+                    <button
+                      key={scanner.id}
+                      onClick={() => { setActiveScannerId(scanner.id); setPreview(null) }}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs ${selected?.id === scanner.id ? 'bg-sky-500/15 text-white' : 'text-slate-400 hover:bg-white/5'}`}
+                    >
+                      <span className="min-w-0 truncate">{scanner.name}</span>
+                      <span className="ml-2 shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px]">{scanner.memberCount} / {scanner.sources.length}</span>
+                    </button>
+                  ))}
+                  {!filteredScanners.length && <p className="px-3 py-4 text-xs text-slate-600">No scanners yet.</p>}
+                </div>
+              </section>
+
+              <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.02]">
+                {!selected ? (
+                  <p className="p-6 text-xs text-slate-600">Select a scanner.</p>
+                ) : (
+                  <>
+                    <div className="flex flex-col justify-between gap-3 border-b border-white/[0.07] p-5 sm:flex-row sm:items-start">
+                      <div>
+                        <h2 className="text-lg font-semibold text-white">{selected.name}</h2>
+                        <p className="mt-1 text-xs text-slate-500">{selected.description}</p>
+                        <p className="mt-2 text-[11px] text-slate-600">{selected.category} · {selected.memberCount} persisted member(s) · {selected.sources.length} source(s)</p>
+                      </div>
+                      <button onClick={() => { setShowAdd(true); setAddUrl('') }} className="flex items-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-300">
+                        <Plus className="size-3.5" /> Add source link
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto p-4">
+                      {selected.sources.length ? (
+                        <table className="w-full min-w-[720px] text-left text-xs">
+                          <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                            <tr>
+                              <th className="pb-3">Source</th>
+                              <th className="pb-3">Type</th>
+                              <th className="pb-3">Last run</th>
+                              <th className="pb-3">Members</th>
+                              <th className="pb-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/[0.06]">
+                            {selected.sources.map((source) => (
+                              <tr key={source.id} className="align-top">
+                                <td className="max-w-[280px] py-3">
+                                  <a href={source.url} target="_blank" rel="noreferrer" className="block truncate text-sky-300 hover:underline" title={source.url}>{source.url}</a>
+                                  <span className="text-[10px] text-slate-600">{source.pipelineMode === 'LIST_AND_FUNDAMENTALS' ? 'List + fundamentals' : 'List only'}{source.enabled ? '' : ' · disabled'}</span>
+                                </td>
+                                <td className="py-3 text-slate-400">{source.kindLabel}</td>
+                                <td className="py-3">
+                                  {source.lastRun ? (
+                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${statusTone[source.lastRun.status] ?? ''}`}>{source.lastRun.status}</span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-600">never run</span>
+                                  )}
+                                </td>
+                                <td className="py-3 text-slate-300">{source.lastRun?.itemsFound ?? '—'}</td>
+                                <td className="py-3">
+                                  <div className="flex justify-end gap-1.5">
+                                    <button onClick={() => testSource(source)} disabled={busy === `test:${source.id}`} className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                                      {busy === `test:${source.id}` ? <Loader2 className="size-3 animate-spin" /> : <Beaker className="size-3" />} Test
+                                    </button>
+                                    <button onClick={() => importSource(source)} disabled={busy === `import:${source.id}`} className="flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] text-sky-300">
+                                      {busy === `import:${source.id}` ? <Loader2 className="size-3 animate-spin" /> : <Database className="size-3" />} Import
+                                    </button>
+                                    <button onClick={() => toggleSource(source)} disabled={busy === `toggle:${source.id}`} className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                                      {source.enabled ? 'Disable' : 'Enable'}
+                                    </button>
+                                    <button onClick={() => deleteSource(source)} disabled={busy === `delete:${source.id}`} className="rounded-md border border-rose-400/20 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/10">
+                                      <Trash2 className="size-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="py-4 text-xs text-slate-600">No source links yet. Add a screener.in screen/market link or a Chartink scan.</p>
+                      )}
+                    </div>
+
+                    {preview && (
+                      <div className="mx-4 mb-4 rounded-xl border border-white/[0.08] bg-black/20 p-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="flex items-center gap-2 text-xs font-semibold text-white"><Beaker className="size-3.5 text-sky-400" /> Preview {preview.kindLabel ? `· ${preview.kindLabel}` : ''}</h3>
+                          <button onClick={() => setPreview(null)} className="text-slate-500 hover:text-white"><X className="size-3.5" /></button>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">{preview.message}</p>
+                        {preview.warnings.map((warning) => (
+                          <p key={warning} className="mt-1 text-[11px] text-amber-300">⚠ {warning}</p>
+                        ))}
+                        {preview.rows.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {preview.rows.slice(0, 40).map((row) => (
+                              <span key={row.symbol} className="rounded border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-slate-300" title={row.companyName ?? ''}>{row.symbol}</span>
+                            ))}
+                            {preview.symbolCount > 40 && <span className="text-[10px] text-slate-600">+{preview.symbolCount - 40} more</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeNav === 'View Stocks (DB)' && (
+            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+              <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <h2 className="text-sm font-semibold text-white">Persisted stocks ({stocks.length})</h2>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-600" />
+                  <input value={stockQuery} onChange={(event) => setStockQuery(event.target.value)} placeholder="Filter symbol or name" className="w-full rounded-lg border border-white/10 bg-black/20 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none sm:w-64" />
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                    <tr>
+                      <th className="pb-3">Symbol</th>
+                      <th className="pb-3">Company</th>
+                      <th className="pb-3">Mkt Cap</th>
+                      <th className="pb-3">P/E</th>
+                      <th className="pb-3">ROCE</th>
+                      <th className="pb-3">ROE</th>
+                      <th className="pb-3">Captured</th>
+                      <th className="pb-3">Scanners</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.06]">
+                    {stocks
+                      .filter((stock) => {
+                        const q = stockQuery.trim().toLowerCase()
+                        if (!q) return true
+                        return stock.symbol.toLowerCase().includes(q) || (stock.companyName ?? '').toLowerCase().includes(q)
+                      })
+                      .map((stock) => (
+                        <tr key={stock.symbol}>
+                          <td className="py-2.5"><a href={`/stocks/${encodeURIComponent(stock.symbol)}`} className="text-sky-300 hover:underline">{stock.symbol}</a></td>
+                          <td className="py-2.5 text-slate-400">{stock.companyName ?? '—'}</td>
+                          <td className="py-2.5 text-slate-300">{n(stock.marketCap)}</td>
+                          <td className="py-2.5 text-slate-300">{n(stock.pe)}</td>
+                          <td className="py-2.5 text-slate-300">{n(stock.roce, '%')}</td>
+                          <td className="py-2.5 text-slate-300">{n(stock.roe, '%')}</td>
+                          <td className="py-2.5 text-[10px] text-slate-500">{when(stock.capturedAt)}</td>
+                          <td className="py-2.5 text-[10px] text-slate-500">{stock.scanners.join(', ') || '—'}</td>
+                        </tr>
+                      ))}
+                    {!stocks.length && (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-600">No stocks persisted yet. Import a source to populate the database.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {activeNav === 'Fetch Logs' && (
+            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+              <h2 className="mb-3 text-sm font-semibold text-white">Fetch runs ({runs.length})</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                    <tr>
+                      <th className="pb-3">Started</th>
+                      <th className="pb-3">Scanner</th>
+                      <th className="pb-3">Status</th>
+                      <th className="pb-3">Found</th>
+                      <th className="pb-3">New</th>
+                      <th className="pb-3">Updated</th>
+                      <th className="pb-3">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.06]">
+                    {runs.map((run) => (
+                      <tr key={run.id}>
+                        <td className="py-2.5 text-[10px] text-slate-500">{when(run.startedAt)}</td>
+                        <td className="py-2.5 text-slate-300">{run.scanner}</td>
+                        <td className="py-2.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${statusTone[run.status] ?? ''}`}>{run.status}</span></td>
+                        <td className="py-2.5 text-slate-300">{run.itemsFound}</td>
+                        <td className="py-2.5 text-slate-300">{run.itemsCreated}</td>
+                        <td className="py-2.5 text-slate-300">{run.itemsUpdated}</td>
+                        <td className="max-w-[320px] truncate py-2.5 text-[10px] text-slate-500" title={run.errorSummary ?? ''}>{run.errorSummary ?? '—'}</td>
+                      </tr>
+                    ))}
+                    {!runs.length && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-600">No fetch runs recorded yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {activeNav === 'System Settings' && (
+            <section className="space-y-4">
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Activity className="size-4 text-emerald-400" /> Environment</h2>
+                <div className="mt-3 grid gap-2 text-xs text-slate-400">
+                  <p>Admin API: <span className="text-emerald-300">protected by ADMIN_SECRET</span> — this browser is authorized.</p>
+                  <p>Scheduler: <code className="text-slate-300">GET /api/cron/fetch</code> protected by CRON_SECRET (Vercel Cron every 6h, see vercel.json).</p>
+                  <p>Screener credentials: set <code className="text-slate-300">SCREENER_EMAIL</code> / <code className="text-slate-300">SCREENER_PASSWORD</code> to fetch login-gated screens.</p>
+                </div>
+                <button
+                  onClick={() => { window.localStorage.removeItem(SECRET_KEY); setSecret(''); setAuthorized(false) }}
+                  className="mt-4 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5"
+                >
+                  Forget saved secret
+                </button>
+              </div>
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Star className="size-4 text-amber-300" /> Suggested public screens</h2>
+                <p className="mt-1 text-xs text-slate-500">Verified screener.in screens, ready to attach to any scanner via “Add source link”.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {SUGGESTIONS.map(([label, url]) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-slate-300 hover:border-sky-400/30 hover:text-white">{label}</a>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <p className="flex items-center gap-1.5 text-[11px] text-slate-600"><Clock3 className="size-3" /> Data is read from the database; nothing on this page is fabricated.</p>
+        </section>
+      </div>
+
+      {showAdd && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b1420] p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="font-semibold text-white">Add source link</h2>
+                <p className="mt-1 text-xs text-slate-500">Attach a screener.in or Chartink URL to “{selected.name}”.</p>
+              </div>
+              <button onClick={() => setShowAdd(false)} className="rounded-lg p-1 text-slate-500" aria-label="Close"><X className="size-4" /></button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-xs text-slate-300">
+                Source URL
+                <input value={addUrl} onChange={(event) => setAddUrl(event.target.value)} placeholder="https://www.screener.in/screens/..." className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTIONS.map(([label, url]) => (
+                  <button key={url} onClick={() => setAddUrl(url)} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-slate-400 hover:text-white">{label}</button>
+                ))}
+              </div>
+              <label className="block text-xs text-slate-300">
+                Pipeline mode
+                <select value={addMode} onChange={(event) => setAddMode(event.target.value as typeof addMode)} className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none">
+                  <option value="LIST_ONLY">Stock list only (fast)</option>
+                  <option value="LIST_AND_FUNDAMENTALS">Stock list + fundamentals (slower)</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setShowAdd(false)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Cancel</button>
+              <button onClick={addSource} disabled={!addUrl.trim() || busy === 'add'} className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                {busy === 'add' ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add source
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  )
 }
-function Badge({ label }: { label: string }) { return <span className="rounded-full border border-emerald-400/15 bg-emerald-400/10 px-2.5 py-1 text-emerald-300">{label}</span> }
-function TabPanel({ tab }: { tab: string }) { return <div className="p-8 text-center"><Settings className="mx-auto size-5 text-slate-600" /><h3 className="mt-3 text-sm font-semibold text-white">{tab}</h3><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">No records are available yet. This view will show persisted configuration and real fetch results once a source has been tested and imported.</p></div> }
-function CreateModal({ onClose }: { onClose: () => void }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="link-title"><div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111827] p-5 shadow-2xl"><div className="flex items-start justify-between"><div><h2 id="link-title" className="font-semibold text-white">Add new source link</h2><p className="mt-1 text-xs text-slate-500">Validate and test before importing any stock records.</p></div><button onClick={onClose} className="rounded-lg p-1 text-slate-500" aria-label="Close dialog"><X className="size-4" /></button></div><div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="text-xs text-slate-300">Source name<input className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" placeholder="e.g. Sales growth" /></label><label className="text-xs text-slate-300">Source type<select className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"><option>Chartink technical scan</option><option>Screener public screen</option><option>Screener company page</option></select></label><label className="text-xs text-slate-300 sm:col-span-2">Source URL<input type="url" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" placeholder="https://..." /></label><label className="text-xs text-slate-300">Pipeline mode<select className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"><option>Stock list only</option><option>Stock list plus fundamentals</option></select></label><label className="text-xs text-slate-300">Fetch frequency<select className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"><option>Hourly</option><option>Every 6 hours</option><option>Daily</option></select></label></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-lg px-3 py-2 text-xs text-slate-400">Cancel</button><button onClick={onClose} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white"><Check className="size-3.5" />Save as draft</button></div></div></div> }
-function Stat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) { return <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-3 text-2xl font-semibold tracking-tight text-white">{value}</p><p className={`mt-1 text-[11px] ${tone}`}>{detail}</p></div> }
+
+function Stat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{value}</p>
+      <p className={`mt-1 text-[11px] ${tone}`}>{detail}</p>
+    </div>
+  )
+}

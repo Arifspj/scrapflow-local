@@ -1,5 +1,6 @@
 import { parseChartinkScreen } from './chartink'
 import { parseScreenerCompany, parseScreenerScreen } from './screener'
+import { parseScreenerMarketSource } from './screener-market'
 import type { ParseResult, SourceKind } from './types'
 
 export function parseSource(html: string, kind: SourceKind, sourceUrl: string): ParseResult {
@@ -8,6 +9,8 @@ export function parseSource(html: string, kind: SourceKind, sourceUrl: string): 
       return parseChartinkScreen(html)
     case 'screener-screen':
       return parseScreenerScreen(html)
+    case 'screener-market':
+      return parseScreenerMarketSource(html, sourceUrl)
     case 'screener-company':
       return parseScreenerCompany(html, sourceUrl)
     default: {
@@ -18,4 +21,4 @@ export function parseSource(html: string, kind: SourceKind, sourceUrl: string): 
 }
 
 export type { ParseResult, ParsedFundamental, ParsedSymbol, SourceKind } from './types'
-export { sourceKindFromLabel } from './types'
+export { KIND_TO_LABEL, sourceKindFromLabel } from './types'

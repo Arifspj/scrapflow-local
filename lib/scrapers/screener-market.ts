@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import type { IndustryLevelName } from './screener-detail'
 import { cleanSymbol, parseNumber, symbolFromCompanyHref } from './screener'
+import type { ParseResult } from './types'
 
 export const SCREENER_BASE = 'https://www.screener.in'
 export const MARKET_PARSER_VERSION = 'screener-market@1.0.0'
@@ -267,6 +268,49 @@ function parseRows($: cheerio.CheerioAPI): { rows: MarketCompanyRow[]; warnings:
 
   if (skipped) warnings.push(`Skipped ${skipped} row(s) without a resolvable company symbol.`)
   return { rows, warnings }
+}
+
+/**
+ * Extract the `/market/<codes>/` path segments from a screener.in URL. Returns
+ * null when the URL is not a market listing so callers never treat an unrelated
+ * link as a category.
+ */
+export function segmentsFromMarketUrl(url: string): string[] | null {
+  let pathname: string
+  try {
+    pathname = new URL(url, SCREENER_BASE).pathname
+  } catch {
+    return null
+  }
+  const match = pathname.match(/\/market\/([^/]+\/)+/i)
+  if (!match) return null
+  const segments = match[0].split('/').filter(Boolean).slice(1).map((segment) => segment.toUpperCase())
+  if (!segments.length || segments.length > 4) return null
+  if (segments.some((segment) => !/^[A-Z0-9]+$/.test(segment))) return null
+  return segments
+}
+
+/**
+ * Parse a screener.in market/category listing through the generic `ParseResult`
+ * shape so it can be previewed and stored like any other source. Pagination is
+ * handled by the collector, not here.
+ */
+export function parseScreenerMarketSource(html: string, sourceUrl: string): ParseResult {
+  const segments = segmentsFromMarketUrl(sourceUrl) ?? []
+  const page = parseMarketPage(html, segments)
+  const symbols = new Map<string, { symbol: string; companyName: string | null }>()
+  for (const row of page.rows) {
+    if (!symbols.has(row.symbol)) symbols.set(row.symbol, { symbol: row.symbol, companyName: row.companyName })
+  }
+  const warnings = [...page.warnings]
+  if (!symbols.size) warnings.push('No company rows were found in the market listing HTML.')
+  return {
+    kind: 'screener-market',
+    parserVersion: MARKET_PARSER_VERSION,
+    symbols: [...symbols.values()],
+    fundamentals: null,
+    warnings,
+  }
 }
 
 export function parseMarketPage(html: string, segments: readonly string[]): MarketPage {
