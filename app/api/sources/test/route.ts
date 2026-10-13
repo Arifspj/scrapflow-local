@@ -4,6 +4,8 @@ import { parseSource, sourceKindFromLabel } from '@/lib/scrapers'
 const hostsByKind: Record<string, string[]> = {
   'chartink-scan': ['chartink.com', 'www.chartink.com'],
   'screener-screen': ['screener.in', 'www.screener.in'],
+  'screener-market': ['screener.in', 'www.screener.in'],
+  'screener-ipo': ['screener.in', 'www.screener.in'],
   'screener-company': ['screener.in', 'www.screener.in'],
 }
 

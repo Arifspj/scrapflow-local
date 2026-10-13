@@ -4,7 +4,9 @@ import { parseSource } from '@/lib/scrapers'
 import { KIND_TO_LABEL, kindFromUrl, type ParsedSymbol, type SourceKind } from '@/lib/scrapers/types'
 import { collectMarketCategory, type MarketImportReport } from '@/lib/market-collect'
 import { collectScreenerScreen, type ScreenImportStatus } from '@/lib/screen-collect'
+import { collectScreenerIpo, type IpoImportStatus } from '@/lib/ipo-collect'
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
+import type { IpoMetrics } from '@/lib/scrapers/screener-ipo'
 import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
 import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
@@ -25,6 +27,8 @@ export type IngestItem = {
   symbol: string
   companyName: string | null
   metrics?: MarketCompanyRow['metrics']
+  /** Listing-time IPO metrics (from a screener.in IPO listing). */
+  ipoMetrics?: IpoMetrics
   sourceUrl?: string
 }
 
@@ -91,7 +95,7 @@ async function fetchSourceHtml(url: string, kind: SourceKind): Promise<{ html: s
 export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   const kind = kindFromUrl(rawUrl)
   if (!kind) {
-    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /market or /company page, or a chartink.com scan.' }
+    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /ipo, /market or /company page, or a chartink.com scan.' }
   }
 
   // Public screens are paginated, so preview every page (bounded) the same way
@@ -110,6 +114,28 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
       warnings: report.warnings,
       message: symbols.length
         ? `Parsed ${symbols.length} symbol(s) across ${report.pagesFetched} page(s); nothing was saved.`
+        : report.pagesFetched > 0
+          ? 'No rows parsed from this source.'
+          : 'Source returned no parseable HTML.',
+    }
+  }
+
+  // IPO listings are paginated too, so preview every page (bounded) exactly
+  // like the import will, otherwise the preview under-reports the row count.
+  if (kind === 'screener-ipo') {
+    const { rows: ipoRows, report } = await collectScreenerIpo(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: 5, delayMs: 300 })
+    const rows = ipoRows.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+    return {
+      ok: ipoRows.length > 0,
+      kind,
+      kindLabel: KIND_TO_LABEL[kind],
+      status: report.pagesFetched > 0 ? 200 : 0,
+      stopped: false,
+      symbolCount: ipoRows.length,
+      rows,
+      warnings: report.warnings,
+      message: ipoRows.length
+        ? `Parsed ${ipoRows.length} IPO symbol(s) across ${report.pagesFetched} page(s); nothing was saved.`
         : report.pagesFetched > 0
           ? 'No rows parsed from this source.'
           : 'Source returned no parseable HTML.',
@@ -177,6 +203,20 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
           },
         })
       }
+    } else if (item.ipoMetrics) {
+      const snapshot = await prisma.stockFundamentalSnapshot.findFirst({ where: { stockId: stock.id }, select: { id: true } })
+      if (!snapshot) {
+        // Listing-time IPO figures are stored as raw data only; the detail page
+        // (fetched by enrichment) replaces this snapshot with real fundamentals.
+        await prisma.stockFundamentalSnapshot.create({
+          data: {
+            stockId: stock.id,
+            sourceUrl: item.sourceUrl,
+            parserVersion: 'screener-ipo@1.0.0',
+            rawData: { source: 'screener-ipo', sourceUrl: item.sourceUrl, metrics: { ...item.ipoMetrics } } as Prisma.InputJsonValue,
+          },
+        })
+      }
     }
 
     await prisma.scannerStock.upsert({
@@ -189,7 +229,7 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
   return { created, updated, memberships }
 }
 
-function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImportStatus): FetchRunStatus {
+function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImportStatus | IpoImportStatus): FetchRunStatus {
   if (status === 'complete') return 'SUCCEEDED'
   if (status === 'failed') return 'FAILED'
   return 'PARTIAL'
@@ -393,6 +433,35 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       } else {
         status = 'FAILED'
         errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the screen.'
+      }
+    } else if (kind === 'screener-ipo') {
+      const { report, rows } = await collectScreenerIpo(source.url, async (url) => (await screenerFetchPolite(url)).html, {
+        maxPages,
+        delayMs: 300,
+      })
+      Object.assign(diagnostics, { report })
+      warnings.push(...report.warnings)
+      const ipoItems: IngestItem[] = rows.map((row) => ({ symbol: row.symbol, companyName: row.companyName, ipoMetrics: row.metrics, sourceUrl: row.sourceUrl }))
+      found = ipoItems.length
+
+      if (ipoItems.length) {
+        const persisted = await persistItems(scannerId, source.id, ipoItems)
+        created = persisted.created
+        updated = persisted.updated
+        memberships = persisted.memberships
+        status = reportStatusToFetchRun(report.status)
+        parserVersion = 'screener-ipo@1.0.0'
+        if (status === 'FAILED') errorSummary = 'No pages could be fetched from the IPO listing.'
+
+        if (persisted.memberships) {
+          const enrichResult = await enrichMembers(ipoItems.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
+          enriched = enrichResult.enriched
+          diagnostics.enrichSkipped = enrichResult.skipped
+          diagnostics.enrichPending = enrichResult.pending
+        }
+      } else {
+        status = 'FAILED'
+        errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the IPO listing.'
       }
     } else {
       const fetched = await fetchSourceHtml(source.url, kind)

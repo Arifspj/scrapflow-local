@@ -13,6 +13,7 @@ export function sourceTypeFromKind(kind: SourceKind): ScannerSourceType {
     case 'chartink-scan':
       return ScannerSourceType.CHARTINK_SCAN
     case 'screener-market':
+    case 'screener-ipo':
     case 'screener-screen':
       return ScannerSourceType.SCREENER_SCREEN
     case 'screener-company':
@@ -102,6 +103,7 @@ export const CANONICAL_SCANNERS: CanonicalScannerDef[] = [
 
 /** Verified public screener screens offered as one-click suggestions in admin. */
 export const SUGGESTED_SOURCES: { name: string; url: string }[] = [
+  { name: 'Recent IPOs', url: 'https://www.screener.in/ipo/recent/' },
   { name: 'Value stocks', url: 'https://www.screener.in/screens/184/value-stocks/' },
   { name: 'Piotroski scan', url: 'https://www.screener.in/screens/2/piotroski-scan/' },
   { name: 'Multibagger stocks', url: 'https://www.screener.in/screens/60880/multibagger-stocks/' },
