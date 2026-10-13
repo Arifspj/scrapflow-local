@@ -1,9 +1,12 @@
+import Link from 'next/link'
 import {
   getOpportunityDashboard,
   type OpportunityDashboard as Dashboard,
   type OpportunityRow,
 } from '@/lib/opportunity-data'
 import type { GrowthReading } from '@/lib/growth-quality'
+import type { OwnershipHolding } from '@/lib/ownership'
+import type { SectorSummary } from '@/lib/sector-map'
 import { OppTable, type OppCell, type OppColumn, type OppRow, type OppTone } from './opp-table'
 
 const DASH = '—'
@@ -73,7 +76,7 @@ function evidenceCell(row: OpportunityRow): OppCell {
 }
 
 function moveCell(row: OpportunityRow): OppCell {
-  if (!row.movement) return { text: 'new', tone: 'neutral', title: 'No earlier saved reading yet — movement is unknown, not necessarily positive.' }
+  if (!row.movement) return { text: 'New baseline', tone: 'neutral', title: 'Only one saved reading so far — this is a new baseline, not positive or negative momentum.' }
   const delta = row.movement.delta
   const title = `Change in normalised opportunity vs the first reading in the last ${row.movement.days} day(s).`
   if (delta === 0) return { text: '→ 0', tone: 'neutral', title }
@@ -207,6 +210,140 @@ function flagRows(rows: OpportunityRow[]): OppRow[] {
   }))
 }
 
+const turnaroundColumns: OppColumn[] = [
+  { label: 'Score', align: 'right' },
+  { label: 'Confirmed signals', text: true },
+  { label: 'Profit YoY', align: 'right' },
+  { label: 'Sales YoY', align: 'right' },
+  { label: 'CFO / PAT', align: 'right' },
+  { label: 'Data as of', align: 'right' },
+]
+
+function turnaroundRows(rows: OpportunityRow[]): OppRow[] {
+  return rows.map((row) => {
+    const assessment = row.turnaround
+    const signals = assessment?.signals ?? []
+    return {
+      ...base(row),
+      cells: [
+        {
+          text: assessment ? `${assessment.score}` : DASH,
+          tone: (assessment?.score ?? 0) >= 60 ? 'good' : 'warn',
+          title: assessment?.caveat ?? undefined,
+        },
+        {
+          text: signals.length ? signals.map((signal) => signal.label).join(' · ') : DASH,
+          title: [signals.map((signal) => signal.detail).join(' '), assessment?.note ?? ''].filter(Boolean).join(' ') || undefined,
+        },
+        growthCell(row.profitGrowth),
+        growthCell(row.salesGrowth),
+        {
+          text: row.cfoPat == null ? DASH : row.cfoPat.toFixed(2),
+          tone: row.cfoPat == null ? 'neutral' : row.cfoPat >= 1 ? 'good' : 'bad',
+          title: 'Operating cash flow ÷ net profit (latest annual).',
+        },
+        { text: dateOnly(row.updatedAt), tone: 'neutral', title: `Financial data snapshot: ${row.dataPeriod ?? 'period not stated'}` },
+      ],
+    }
+  })
+}
+
+function holdingOf(row: OpportunityRow, key: OwnershipHolding['key']): OwnershipHolding | null {
+  return row.ownership?.holdings.find((holding) => holding.key === key) ?? null
+}
+
+function holdingCell(holding: OwnershipHolding | null): OppCell {
+  if (!holding) return { text: DASH, tone: 'neutral', title: 'Holder group not reported for this company.' }
+  if (holding.changePp == null) {
+    return {
+      text: `${holding.latest.toFixed(2)}%`,
+      tone: 'neutral',
+      title: `Latest ${holding.latestPeriod}: ${holding.latest.toFixed(2)}% — no earlier comparable period, so no trend is shown.`,
+    }
+  }
+  const tone: OppTone = holding.changePp > 0 ? 'good' : holding.changePp < 0 ? 'bad' : 'neutral'
+  return {
+    text: `${holding.changePp > 0 ? '+' : ''}${holding.changePp.toFixed(2)} pp`,
+    tone,
+    title: `${holding.label}: ${holding.previousPeriod} ${holding.previous?.toFixed(2)}% → ${holding.latestPeriod} ${holding.latest.toFixed(2)}%.`,
+  }
+}
+
+const ownershipColumns: OppColumn[] = [
+  { label: 'Promoter Δ', align: 'right' },
+  { label: 'FII Δ', align: 'right' },
+  { label: 'DII Δ', align: 'right' },
+  { label: 'Snapshot', text: true },
+  { label: 'Data as of', align: 'right' },
+]
+
+function ownershipRows(rows: OpportunityRow[]): OppRow[] {
+  return rows.map((row) => ({
+    ...base(row),
+    cells: [
+      holdingCell(holdingOf(row, 'promoter')),
+      holdingCell(holdingOf(row, 'fii')),
+      holdingCell(holdingOf(row, 'dii')),
+      {
+        text: row.ownership?.signals.length ? row.ownership.signals.join(' · ') : DASH,
+        title: row.ownership ? `Basis: ${row.ownership.basis} shareholding, latest period ${row.ownership.period}.` : undefined,
+      },
+      { text: dateOnly(row.updatedAt), tone: 'neutral', title: `Financial data snapshot: ${row.dataPeriod ?? 'period not stated'}` },
+    ],
+  }))
+}
+
+function sectorMetric(value: number | null, digits = 1, suffix = ''): string {
+  return value == null ? DASH : `${value.toLocaleString('en-IN', { maximumFractionDigits: digits })}${suffix}`
+}
+
+function SectorMap({ sectors }: { sectors: SectorSummary[] }) {
+  if (!sectors.length) {
+    return <p className="px-4 py-6 text-xs text-slate-500">Not enough sectors yet with the minimum number of companies carrying sufficient data to summarise. Sectors below the minimum sample are deliberately omitted rather than shown with a misleading average.</p>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[820px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-[#152742] text-[11px] uppercase tracking-wider text-slate-500">
+            <th className="px-3 py-2 text-left font-semibold">Sector</th>
+            <th className="px-3 py-2 text-right font-semibold">Companies</th>
+            <th className="px-3 py-2 text-right font-semibold">With data</th>
+            <th className="px-3 py-2 text-right font-semibold">Median ROCE</th>
+            <th className="px-3 py-2 text-right font-semibold">Median P/E</th>
+            <th className="px-3 py-2 text-right font-semibold">Avg Opp /100</th>
+            <th className="px-3 py-2 text-right font-semibold">Rising</th>
+            <th className="px-3 py-2 text-right font-semibold">Above median</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sectors.map((sector) => (
+            <tr key={sector.name} className="border-b border-[#0f1f33] last:border-0 hover:bg-white/[0.03]">
+              <td className="px-3 py-2">
+                {sector.href ? (
+                  <Link href={sector.href} className="font-semibold text-white hover:text-sky-300">{sector.name}</Link>
+                ) : (
+                  <span className="font-semibold text-white">{sector.name}</span>
+                )}
+                {sector.financial ? (
+                  <span className="mt-0.5 block text-[10px] text-slate-500">Financial sector — industrial leverage / cash-flow rules not applied</span>
+                ) : null}
+              </td>
+              <td className="px-3 py-2 text-right text-slate-300">{sector.total.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right text-slate-300" title="Companies with ≥60% of the model available">{sector.covered.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right text-slate-300">{sectorMetric(sector.medianRoce, 1, '%')}</td>
+              <td className="px-3 py-2 text-right text-slate-300">{sectorMetric(sector.medianPe, 1)}</td>
+              <td className="px-3 py-2 text-right text-sky-400">{sectorMetric(sector.avgOpportunity, 1)}</td>
+              <td className="px-3 py-2 text-right text-slate-300" title="Companies with comparable positive profit or sales growth">{sector.risingCount.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right text-slate-300" title="Companies scoring above their sector's average opportunity">{sector.improvingAboveMedian.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function dateTimeLabel(iso: string | null): string {
   if (!iso) return 'Not yet'
   return new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
@@ -303,9 +440,54 @@ export async function OpportunityDashboard() {
         </Section>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Section
+          title="Turnaround Candidates"
+          subtitle="Verified improvements from the annual statements — loss→profit, margin expansion, cash and debt trends. A lone signal is not called a turnaround."
+          count={`${data.turnarounds.length} names`}
+        >
+          <OppTable columns={turnaroundColumns} rows={turnaroundRows(data.turnarounds)} initialSort={0} emptyLabel="No corroborated turnaround in the saved annual statements yet." />
+        </Section>
+
+        <Section
+          title="Smart Money / Ownership"
+          subtitle="Changes in promoter, FII and DII holdings between reported periods. Never inferred from price."
+          count={`${data.ownershipMovers.length} movers`}
+        >
+          <OppTable columns={ownershipColumns} rows={ownershipRows(data.ownershipMovers)} emptyLabel="No comparable shareholding periods for a meaningful change yet." />
+        </Section>
+      </div>
+
+      <Section
+        title="Sector Opportunity Map"
+        subtitle="Where the fundamental opportunity sits across sectors. Sectors with too few covered companies are omitted; link through to the existing industry pages."
+        count={`${data.sectors.length} sectors`}
+      >
+        <SectorMap sectors={data.sectors} />
+        <p className="border-t border-[#0f1f33] px-4 py-2 text-[10px] text-slate-600">
+          Company counts reflect saved records; “With data” means ≥60% of the opportunity model could be scored. Rising = comparable positive profit or sales growth. Not a recommendation.
+        </p>
+      </Section>
+
       <Section title="Red Flag Monitor" subtitle="Cash-flow, leverage and profitability warnings, with the metric and period behind each." count={`${data.redFlags.length} names`}>
         <OppTable columns={flagColumns} rows={flagRows(data.redFlags)} emptyLabel="No red flags detected in the current saved data." />
       </Section>
+
+      <section className="overflow-hidden rounded-xl border border-[#162844] bg-[#091527]">
+        <div className="border-b border-[#152742] px-4 py-3">
+          <h3 className="text-sm font-semibold text-white">Fresh Business Triggers</h3>
+          <p className="mt-0.5 text-[11px] text-slate-500">Order wins, capacity expansion, regulatory approvals, results events.</p>
+        </div>
+        <div className="px-4 py-5 text-xs leading-5 text-slate-400">
+          <p className="font-medium text-amber-400">Unavailable — no authorised corporate-announcements source connected.</p>
+          <p className="mt-1">
+            Verified triggers need an authorised exchange-filings / announcements feed with dates and source links. None is connected, so this
+            section stays empty rather than showing unverified headlines. Once a reliable source is added it will list the company, event type,
+            announcement date, source link, status / expected timeline, why it may matter, and whether the event is new or already reflected in
+            the saved results.
+          </p>
+        </div>
+      </section>
     </section>
   )
 }

@@ -5,6 +5,9 @@ import { computeOpportunity, isFinancialIndustry, opportunityInputFromView } fro
 import { symbolIdentity } from '@/lib/identity'
 import type { GrowthReading } from '@/lib/growth-quality'
 import { buildFlags, type StockFlag } from '@/lib/stock-flags'
+import { assessTurnaround, type TurnaroundAssessment } from '@/lib/turnaround'
+import { ownershipTrend, type OwnershipTrend } from '@/lib/ownership'
+import { summarizeSectors, type SectorInput, type SectorSummary } from '@/lib/sector-map'
 
 /**
  * Server data layer for the "Early Opportunity" dashboard.
@@ -37,6 +40,8 @@ export type OpportunityRow = {
   href: string
   identity: ReturnType<typeof symbolIdentity>
   sector: string | null
+  /** Link to the sector's existing industry page (`/market/...`), when known. */
+  sectorHref: string | null
   industry: string | null
   isFinancial: boolean
   /** Normalised score over the available evidence (0–100), null when unusable. */
@@ -63,6 +68,8 @@ export type OpportunityRow = {
   profitGrowth: GrowthReading | null
   qoqProfitGrowth: GrowthReading | null
   flags: StockFlag[]
+  turnaround: TurnaroundAssessment | null
+  ownership: OwnershipTrend | null
   components: OpportunityComponentView[]
   dataPeriod: string | null
   updatedAt: string | null
@@ -90,6 +97,9 @@ export type OpportunityDashboard = {
   earnings: OpportunityRow[]
   undervalued: OpportunityRow[]
   redFlags: OpportunityRow[]
+  turnarounds: OpportunityRow[]
+  ownershipMovers: OpportunityRow[]
+  sectors: SectorSummary[]
 }
 
 function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | null; industry: string | null } {
@@ -107,6 +117,7 @@ function toRow(stock: StockForRow): OpportunityRow | null {
   const opportunity = computeOpportunity(input)
   const isFinancial = isFinancialIndustry(view.industry)
   const { sector, industry } = sectorOf(view)
+  const broadHref = view.industry[0]?.url ? view.industry[0].url!.replace(/\/$/, '') : null
   const valuationValid = view.price != null && view.price > 0 && view.valuation.intrinsic != null && view.valuation.intrinsic >= 1
 
   return {
@@ -115,6 +126,7 @@ function toRow(stock: StockForRow): OpportunityRow | null {
     href: `/stocks/${encodeURIComponent(stock.symbol)}`,
     identity: symbolIdentity(stock.symbol),
     sector,
+    sectorHref: broadHref,
     industry,
     isFinancial,
     opportunity: opportunity.normalized,
@@ -137,6 +149,8 @@ function toRow(stock: StockForRow): OpportunityRow | null {
     profitGrowth: view.profitGrowth,
     qoqProfitGrowth: input.qoqProfitGrowth,
     flags: buildFlags(view, isFinancial),
+    turnaround: assessTurnaround(view.detail),
+    ownership: ownershipTrend(view.detail?.shareholding),
     components: opportunity.parts.map((part) => ({
       key: part.key,
       label: part.label,
@@ -208,25 +222,58 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
 
   const rows = rowsWithId.map((entry) => entry.row)
 
-  const radar = [...evaluable.map((entry) => entry.row)].sort(byOpportunity).slice(0, 12)
+  // Rows whose identity is an unresolved numeric source id are never ranked or
+  // linked as if they were ordinary tickers (see lib/identity.ts).
+  const rankable = rows.filter((row) => !row.identity.numeric)
 
-  const earnings = rows
+  const radar = rankable
+    .filter((row) => row.coveragePct >= RADAR_MIN_COVERAGE)
+    .sort(byOpportunity)
+    .slice(0, 12)
+
+  const earnings = rankable
     .filter((row) => growthSortValue(row.qoqProfitGrowth) > 0 || growthSortValue(row.profitGrowth) > 0)
     .sort((a, b) => growthSortValue(b.qoqProfitGrowth) - growthSortValue(a.qoqProfitGrowth) || growthSortValue(b.profitGrowth) - growthSortValue(a.profitGrowth))
     .slice(0, 10)
 
-  const undervalued = rows
+  const undervalued = rankable
     .filter((row) => row.valuationValid && (row.roce ?? -Infinity) >= 15 && (row.mos ?? -Infinity) > 0 && row.pe != null && row.pe > 0)
     .sort((a, b) => (b.mos ?? -Infinity) - (a.mos ?? -Infinity))
     .slice(0, 10)
 
-  const redFlags = rows
+  const redFlags = rankable
     .filter((row) => row.flags.length > 0)
     .sort((a, b) => {
       const severity = (row: OpportunityRow) => row.flags.reduce((sum, flag) => sum + (flag.severity === 'bad' ? 2 : 1), 0)
       return severity(b) - severity(a) || b.flags.length - a.flags.length
     })
     .slice(0, 10)
+
+  const turnarounds = rankable
+    .filter((row) => row.turnaround?.genuine)
+    .sort((a, b) => (b.turnaround?.score ?? 0) - (a.turnaround?.score ?? 0) || (b.coveragePct ?? 0) - (a.coveragePct ?? 0))
+    .slice(0, 12)
+
+  const ownershipStrength = (row: OpportunityRow): number => {
+    if (!row.ownership) return 0
+    return row.ownership.holdings.reduce((max, holding) => Math.max(max, Math.abs(holding.changePp ?? 0)), 0)
+  }
+  const ownershipMovers = rankable
+    .filter((row) => row.ownership != null && row.ownership.signals.length > 0)
+    .sort((a, b) => ownershipStrength(b) - ownershipStrength(a))
+    .slice(0, 10)
+
+  const sectorInputs: SectorInput[] = rows.map((row) => ({
+    sector: row.sector,
+    sectorHref: row.sectorHref,
+    coveragePct: row.coveragePct,
+    opportunity: row.opportunity,
+    roce: row.roce,
+    pe: row.pe,
+    profitGrowth: row.profitGrowth,
+    salesGrowth: row.salesGrowth,
+  }))
+  const sectors = summarizeSectors(sectorInputs)
 
   return {
     coverage: {
@@ -244,6 +291,9 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     earnings,
     undervalued,
     redFlags,
+    turnarounds,
+    ownershipMovers,
+    sectors,
   }
 }
 
