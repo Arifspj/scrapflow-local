@@ -75,6 +75,16 @@ function marketSegments(url: string | null | undefined): string[] | null {
   return segments
 }
 
+/** Industry categories for a stock, deepest (most specific) first. */
+function industryCategories(industry: readonly IndustryLink[]): string[][] {
+  const candidates: string[][] = []
+  for (const level of industry) {
+    const segments = marketSegments(level.url)
+    if (segments) candidates.push(segments)
+  }
+  return candidates.reverse()
+}
+
 function withTrailingSlash(url: string | null): string {
   return (url ?? '').replace(/\/+$/, '') + '/'
 }
@@ -410,8 +420,17 @@ export default async function StockPage({ params, searchParams }: Props) {
   const requestedScanner = search.scanner?.trim() || null
   const requestedMarket = search.market?.trim() || null
   let ticker = await buildTickerContext(requestedScanner, requestedMarket)
-  if (!ticker && !requestedScanner && !requestedMarket && stock.scanners[0]) {
-    ticker = await buildTickerContext(stock.scanners[0].scanner.id, null)
+  if (!ticker && !requestedScanner && !requestedMarket) {
+    // Direct visit: prefer this stock's own saved scanner membership, then fall
+    // back to its industry (deepest, most specific category first) so the
+    // sibling strip still appears without an explicit scanner/market context.
+    if (stock.scanners[0]) ticker = await buildTickerContext(stock.scanners[0].scanner.id, null)
+    if (!ticker) {
+      for (const segments of industryCategories(view.industry)) {
+        ticker = await buildTickerContext(null, segments.join('/'))
+        if (ticker) break
+      }
+    }
   }
 
   const sidebarItems: SidebarItem[] = relatedViews.map((item) => ({
