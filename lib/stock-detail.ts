@@ -266,7 +266,18 @@ export type StockView = {
   salesYoy: number | null
   profitYoy: number | null
   cfoPat: number | null
+  /** Latest working-capital days reported by the source (screener definition). */
   workingCapitalDays: number | null
+  /** Latest Cash Conversion Cycle (Debtor Days + Inventory Days − Days Payable). */
+  cashConversionCycle: number | null
+  /** Change in CCC vs the previous reported year (latest − prev), null when not computable. */
+  cashConversionCycleDelta: number | null
+  /** Latest debtor (DSO) days, null when the source omits the row. */
+  debtorDays: number | null
+  /** Latest inventory (DIO) days, null when the source omits the row. */
+  inventoryDays: number | null
+  /** Latest days payable (DPO), null when the source omits the row. */
+  daysPayable: number | null
   piotroski: number | null
   /** Criteria the partial/full Piotroski score is measured against. */
   piotroskiTotal: number
@@ -328,6 +339,14 @@ export function buildStockView(
   const cfo = toNumber(cfoLatest)
   const cfoPat = cfo != null && netProfit != null && netProfit !== 0 ? Number((cfo / netProfit).toFixed(2)) : null
   const workingCapitalDays = toNumber(lastNonEmpty(findDetailRow(detail?.ratios, 'working capital days')?.values))
+  const cccSeries = seriesWithTtm(detail?.ratios, 'cash conversion cycle')
+  const cashConversionCycle = cccSeries.length ? cccSeries[cccSeries.length - 1] : null
+  const cashConversionCyclePrev = cccSeries.length >= 2 ? cccSeries[cccSeries.length - 2] : null
+  const cashConversionCycleDelta =
+    cashConversionCycle != null && cashConversionCyclePrev != null ? cashConversionCycle - cashConversionCyclePrev : null
+  const debtorDays = latestValue(seriesWithTtm(detail?.ratios, 'debtor days'))
+  const inventoryDays = latestValue(seriesWithTtm(detail?.ratios, 'inventory days'))
+  const daysPayable = latestValue(seriesWithTtm(detail?.ratios, 'days payable'))
 
   const annualSales = annualNumbers(detail?.profitLoss, 'sales')
   const netProfitSeries = seriesWithTtm(detail?.profitLoss, 'net profit')
@@ -422,6 +441,11 @@ export function buildStockView(
     profitYoy,
     cfoPat,
     workingCapitalDays,
+    cashConversionCycle,
+    cashConversionCycleDelta,
+    debtorDays,
+    inventoryDays,
+    daysPayable,
     piotroski: piotroskiResult.score,
     piotroskiTotal: piotroskiResult.totalCriteria,
     piotroskiPartial: piotroskiResult.partial,

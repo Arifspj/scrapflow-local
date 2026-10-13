@@ -141,6 +141,11 @@ export function buildCopyMarkdown(view: StockView): string {
   lines.push(`- Revenue (latest annual): ${value(view.revenue, (n) => formatCr(n))} (source)`)
   lines.push(`- Net Profit (latest annual): ${value(view.netProfit, (n) => formatCr(n))} (source)`)
   lines.push(`- CFO / PAT: ${view.cfoPat != null ? view.cfoPat.toFixed(2) : 'N/A'} (calculated = CFO ÷ Net Profit, latest annual)`)
+  lines.push(
+    `- Working Capital (CCC): ${view.cashConversionCycle != null ? `${formatNum(view.cashConversionCycle, 0)} days` : 'N/A'}${
+      view.cashConversionCycleDelta != null ? ` (${view.cashConversionCycleDelta >= 0 ? '+' : ''}${formatNum(view.cashConversionCycleDelta, 0)} vs prev year)` : ''
+    } (calculated = Debtor Days + Inventory Days − Days Payable, lower is better)`,
+  )
   lines.push(`- Working Capital Days: ${view.workingCapitalDays != null ? `${formatNum(view.workingCapitalDays, 0)} days` : 'N/A'} (source)`)
   lines.push(`- Piotroski F-Score: ${view.piotroski != null ? `${view.piotroski}/${view.piotroskiTotal}${view.piotroskiPartial ? ' (partial)' : ''}` : 'N/A'} (calculated)`)
   const score = view.scoreBreakdown

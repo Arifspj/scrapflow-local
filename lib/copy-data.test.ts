@@ -48,8 +48,12 @@ const HTML = `<!doctype html><html><body>
 <section id="ratios"><table>
   <thead><tr><th></th><th>Mar 2024</th><th>Mar 2025</th></tr></thead>
   <tbody>
-    <tr><td>ROCE %</td><td>20</td><td>22</td></tr>
+    <tr><td>Debtor Days</td><td>90</td><td>120</td></tr>
+    <tr><td>Inventory Days</td><td>40</td><td>50</td></tr>
+    <tr><td>Days Payable</td><td>60</td><td>80</td></tr>
+    <tr><td>Cash Conversion Cycle</td><td>70</td><td>90</td></tr>
     <tr><td>Working Capital Days</td><td>60</td><td>58</td></tr>
+    <tr><td>ROCE %</td><td>20</td><td>22</td></tr>
   </tbody>
 </table></section>
 <section id="shareholding"><table>
@@ -122,6 +126,13 @@ describe('buildCopyMarkdown', () => {
     expect(markdown).toContain('Calculation date:')
     expect(markdown).toContain(`Fair P/E (min(8.5 + 2 × growth, 38.5), no-growth floor 11): ${formatNum(view.valuation.fairPe, 1)}`)
     expect(markdown).toContain('Graham Number')
+  })
+
+  it('reports the cash conversion cycle alongside the source working-capital days', () => {
+    expect(markdown).toContain(
+      `Working Capital (CCC): ${formatNum(view.cashConversionCycle, 0)} days (+${formatNum(view.cashConversionCycleDelta, 0)} vs prev year)`,
+    )
+    expect(markdown).toContain('Working Capital Days: 58 days (source)')
   })
 
   it('reports a documented partial Piotroski when current-ratio is unavailable', () => {

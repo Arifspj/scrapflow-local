@@ -36,8 +36,15 @@ const HTML = `<!doctype html><html><body>
   <tbody><tr><td>Cash from Operating Activity +</td><td>-27</td><td>30</td></tr></tbody>
 </table></section>
 <section id="ratios"><table>
-  <thead><tr><th></th><th>Mar 2025</th></tr></thead>
-  <tbody><tr><td>Working Capital Days</td><td>74</td></tr><tr><td>ROCE %</td><td>22</td></tr></tbody>
+  <thead><tr><th></th><th>Mar 2025</th><th>Mar 2026</th></tr></thead>
+  <tbody>
+    <tr><td>Debtor Days</td><td>277</td><td>332</td></tr>
+    <tr><td>Inventory Days</td><td>6</td><td>18</td></tr>
+    <tr><td>Days Payable</td><td>492</td><td>582</td></tr>
+    <tr><td>Cash Conversion Cycle</td><td>-209</td><td>-232</td></tr>
+    <tr><td>Working Capital Days</td><td>-27</td><td>74</td></tr>
+    <tr><td>ROCE %</td><td>20</td><td>22</td></tr>
+  </tbody>
 </table></section>
 <section id="shareholding"><table>
   <thead><tr><th></th><th>Jun 2026</th></tr></thead>
@@ -128,12 +135,17 @@ describe('stock-detail helpers', () => {
     expect(detail.industry[3]).toMatchObject({ name: 'Pharmaceuticals', url: '/market/IN06/IN0601/IN060101/IN060101001/' })
   })
 
-  it('surfaces screener ratios (working capital days) and marks Piotroski N/A', () => {
+  it('surfaces the cash conversion cycle alongside the source working-capital days and marks Piotroski N/A', () => {
     const detail = parseScreenerDetail(HTML, 'x')
     const view = buildStockView(
       { symbol: 'TBZ', companyName: 'TBZ' },
       { rawData: detail, capturedAt: new Date('2026-10-12T12:43:00Z'), marketCap: 4160, peRatio: 19.6 },
     )
+    expect(view.cashConversionCycle).toBe(-232)
+    expect(view.cashConversionCycleDelta).toBe(-23)
+    expect(view.debtorDays).toBe(332)
+    expect(view.inventoryDays).toBe(18)
+    expect(view.daysPayable).toBe(582)
     expect(view.workingCapitalDays).toBe(74)
     expect(view.piotroski).toBeNull()
     expect(view.valuation.intrinsic).not.toBeNull()

@@ -386,6 +386,21 @@ export default async function StockPage({ params }: Props) {
   const browseSegments = scannerSegments && scannerSegments.length > 1 ? scannerSegments.slice(0, -1) : scannerSegments
   const browseCategory = browseSegments ? { href: categoryHref(browseSegments), label: categoryLabel(view.industry, browseSegments) } : null
 
+  const ccc = view.cashConversionCycle
+  const cccDelta = view.cashConversionCycleDelta
+  const workingCapital = ccc ?? view.workingCapitalDays
+  const cccTone: MetricTone = cccDelta == null ? 'neutral' : Math.abs(cccDelta) < 1 ? 'neutral' : cccDelta < 0 ? 'good' : 'warn'
+  const workingCapitalTitle = [
+    'Cash Conversion Cycle (CCC) = Debtor Days + Inventory Days − Days Payable (lower = better)',
+    ccc != null ? `CCC: ${Math.round(ccc)}d${cccDelta != null ? ` (${cccDelta >= 0 ? '+' : ''}${Math.round(cccDelta)}d vs prev)` : ''}` : 'CCC not reported by this source',
+    view.debtorDays != null ? `Debtor Days: ${Math.round(view.debtorDays)}d` : null,
+    view.inventoryDays != null ? `Inventory Days: ${Math.round(view.inventoryDays)}d` : null,
+    view.daysPayable != null ? `Days Payable: ${Math.round(view.daysPayable)}d` : null,
+    view.workingCapitalDays != null ? `Working Capital Days (source): ${Math.round(view.workingCapitalDays)}d` : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join('\n')
+
   const metrics: { label: string; value: string; tone: MetricTone; title?: string }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
@@ -405,7 +420,7 @@ export default async function StockPage({ params }: Props) {
     },
     { label: 'Div. Yield', value: formatPct(view.dividendYield, 2), tone: getMetricStatus('dividendYield', view.dividendYield) },
     { label: 'D/E', value: view.debtToEquity != null ? view.debtToEquity.toFixed(2) : '—', tone: getMetricStatus('debtToEquity', view.debtToEquity) },
-    { label: 'Working Capital', value: view.workingCapitalDays != null ? `${formatNum(view.workingCapitalDays, 0)} days` : '—', tone: 'neutral' },
+    { label: 'Working Capital (CCC)', value: workingCapital != null ? `${formatNum(workingCapital, 0)} days` : '—', tone: cccTone, title: workingCapitalTitle },
   ]
 
   return (
