@@ -28,6 +28,8 @@ import {
 import type { DetailTable, IndustryLink, PeerRow } from '@/lib/scrapers/screener-detail'
 import { ensureStockDetail } from '@/lib/stocks'
 import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
+import { getCategoryData } from '@/lib/category-data'
+import { getPublicSnapshot } from '@/lib/public-data'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataMenu } from './copy-data-button'
@@ -35,10 +37,11 @@ import { RefreshButton } from './refresh-button'
 import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
 import type { SidebarItem } from './sidebar'
+import { StockTicker, type TickerItem } from './stock-ticker'
 import { StockWorkspace } from './workspace'
 
 export const dynamic = 'force-dynamic'
-type Props = { params: Promise<{ symbol: string }> }
+type Props = { params: Promise<{ symbol: string }>; searchParams: Promise<{ scanner?: string; market?: string }> }
 
 const QUALITY_TONE: Record<'good' | 'neutral', string> = {
   good: 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300',
@@ -328,8 +331,52 @@ function PeerComparison({ view }: { view: StockView }) {
   )
 }
 
-export default async function StockPage({ params }: Props) {
+type TickerContext = { items: TickerItem[]; contextQuery: string; viewAllHref: string }
+
+/**
+ * Build the sibling-stock ticker for the context the visitor arrived from — a
+ * scanner (`?scanner=<id>`) or a market/category path (`?market=<segments>`).
+ * Returns null when there is no usable context or fewer than two siblings, so
+ * a plain visit or a one-company category does not render a pointless strip.
+ */
+async function buildTickerContext(scanner: string | null, market: string | null): Promise<TickerContext | null> {
+  if (scanner) {
+    const snap = await getPublicSnapshot(scanner)
+    const items: TickerItem[] = snap.rows.map((row) => {
+      const v = buildStockView(row.stock, row.stock.fundamentals[0] ?? null)
+      return { symbol: v.symbol, company: v.companyName || v.symbol, price: v.price, score: v.score }
+    })
+    if (items.length < 2) return null
+    return {
+      items,
+      contextQuery: `scanner=${encodeURIComponent(scanner)}`,
+      viewAllHref: `/?scanner=${encodeURIComponent(snap.scanner?.name ?? scanner)}`,
+    }
+  }
+
+  if (market) {
+    const segments = market
+      .split('/')
+      .map((segment) => segment.trim().toUpperCase())
+      .filter((segment) => /^[A-Z0-9]+$/.test(segment))
+    if (!segments.length) return null
+    const { rows } = await getCategoryData(segments)
+    const items: TickerItem[] = rows.map((row) => ({
+      symbol: row.symbol,
+      company: row.companyName || row.symbol,
+      price: row.price,
+      score: row.score,
+    }))
+    if (items.length < 2) return null
+    return { items, contextQuery: `market=${encodeURIComponent(segments.join('/'))}`, viewAllHref: categoryHref(segments) }
+  }
+
+  return null
+}
+
+export default async function StockPage({ params, searchParams }: Props) {
   const symbol = decodeURIComponent((await params).symbol).toUpperCase()
+  const search = await searchParams
   const stock = await ensureStockDetail(symbol)
   if (!stock) notFound()
 
@@ -340,6 +387,16 @@ export default async function StockPage({ params }: Props) {
   })
   const relatedViews = related.map((item) => ({ id: item.id, view: buildStockView(item, item.fundamentals[0] ?? null) }))
   const view = buildStockView(stock, stock.fundamentals[0] ?? null)
+
+  // Ticker context: prefer the scanner/market the visitor came from; otherwise
+  // fall back to this stock's own saved scanner membership so a direct visit
+  // still shows a relevant sibling strip.
+  const requestedScanner = search.scanner?.trim() || null
+  const requestedMarket = search.market?.trim() || null
+  let ticker = await buildTickerContext(requestedScanner, requestedMarket)
+  if (!ticker && !requestedScanner && !requestedMarket && stock.scanners[0]) {
+    ticker = await buildTickerContext(stock.scanners[0].scanner.id, null)
+  }
 
   const sidebarItems: SidebarItem[] = relatedViews.map((item) => ({
     id: item.id,
@@ -460,6 +517,9 @@ export default async function StockPage({ params }: Props) {
 
       <StockWorkspace items={sidebarItems} activeSymbol={view.symbol}>
         <main className="min-w-0 flex-1 space-y-3 bg-[#080c16] px-4 py-3">
+          {ticker && (
+            <StockTicker items={ticker.items} activeSymbol={view.symbol} contextQuery={ticker.contextQuery} viewAllHref={ticker.viewAllHref} />
+          )}
           <section className="rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3 shadow-md">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1b273d] pb-3">
               <div className="flex min-w-0 items-center gap-3.5">

@@ -119,7 +119,7 @@ export default async function HomePage({ searchParams }: Props) {
             </section>
             <section className="overflow-hidden rounded-xl border border-[#162844] bg-[#091527]">
               {rows.length ? (
-                <ScannerTable rows={rows} />
+                <ScannerTable rows={rows} scannerId={scanner?.id} />
               ) : (
                 <div className="p-14 text-center">
                   <h2 className="text-sm font-semibold text-white">No saved records yet</h2>

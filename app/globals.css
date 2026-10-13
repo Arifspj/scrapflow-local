@@ -213,3 +213,15 @@ html {
 ::-webkit-scrollbar-corner {
   background: #0b1220;
 }
+
+/* Horizontal stock ticker: scrollable but with no visible scrollbar. */
+.ticker-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ticker-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

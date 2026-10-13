@@ -119,7 +119,7 @@ export default async function MarketCategoryPage({ params }: Props) {
         </section>
 
         {rows.length > 0 ? (
-          <CategoryTable rows={rows} />
+          <CategoryTable rows={rows} contextSlug={segments.join('/')} />
         ) : (
           <section className="rounded-xl border border-[#152742] bg-[#091527] p-8 text-center">
             <h2 className="text-sm font-semibold text-white">No saved companies in this category yet</h2>

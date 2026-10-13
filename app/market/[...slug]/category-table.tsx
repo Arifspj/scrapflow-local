@@ -88,7 +88,7 @@ function parseNumericQuery(raw: string): ((value: number | null) => boolean) | n
   return null
 }
 
-export function CategoryTable({ rows }: { rows: CategoryStockRow[] }) {
+export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[]; contextSlug?: string }) {
   const [sortKey, setSortKey] = useState<SortKey>('marketCap')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState<Partial<Record<FilterKey, string>>>({})
@@ -224,7 +224,7 @@ export function CategoryTable({ rows }: { rows: CategoryStockRow[] }) {
               return (
                 <tr key={row.symbol} className="bg-[#0b1524] transition-colors hover:bg-[#0e1a2e]">
                   <td className="px-3 py-2">
-                    <Link href={`/stocks/${encodeURIComponent(row.symbol)}`} className="block">
+                    <Link href={`/stocks/${encodeURIComponent(row.symbol)}${contextSlug ? `?market=${encodeURIComponent(contextSlug)}` : ''}`} className="block">
                       <span className="block font-semibold text-slate-100 hover:text-sky-300">{row.companyName || row.symbol}</span>
                       <span className="font-mono text-[12px] text-slate-500">{row.symbol}</span>
                     </Link>

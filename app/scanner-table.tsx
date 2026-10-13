@@ -85,10 +85,13 @@ function parseNumericQuery(raw: string): ((value: number | null) => boolean) | n
   return null
 }
 
-export function ScannerTable({ rows }: { rows: ScannerRow[] }) {
+export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerId?: string }) {
   const [sortKey, setSortKey] = useState<Key>('score')
   const [asc, setAsc] = useState(false)
   const [filters, setFilters] = useState<Partial<Record<Key, string>>>({})
+
+  const stockHref = (symbol: string) =>
+    `/stocks/${encodeURIComponent(symbol)}${scannerId ? `?scanner=${encodeURIComponent(scannerId)}` : ''}`
 
   function toggle(key: Key) {
     if (key === sortKey) {
@@ -191,7 +194,7 @@ export function ScannerTable({ rows }: { rows: ScannerRow[] }) {
             {sorted.map((row) => (
               <tr key={row.id} className="hover:bg-sky-400/[.04]">
                 <td className="px-4 py-3">
-                  <Link href={`/stocks/${encodeURIComponent(row.symbol)}`} className="font-semibold text-white hover:text-sky-300">{row.company}</Link>
+                  <Link href={stockHref(row.symbol)} className="font-semibold text-white hover:text-sky-300">{row.company}</Link>
                   <span className="ml-2 text-[12px] text-slate-500">{row.symbol}</span>
                 </td>
                 <td className="px-4 py-3">{fmt(row.ltp)}</td>
