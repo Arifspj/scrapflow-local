@@ -33,6 +33,7 @@ import { getPublicSnapshot } from '@/lib/public-data'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataMenu } from './copy-data-button'
+import { MasonryGrid } from './masonry'
 import { RefreshButton } from './refresh-button'
 import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
@@ -665,7 +666,7 @@ export default async function StockPage({ params, searchParams }: Props) {
             ))}
           </section>
 
-          <section aria-label="Growth" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
+          <MasonryGrid className="grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             <Card title="Quarter on Quarter (QoQ)">
               <GrowthPanel
                 growth={growth?.qoq ?? null}
@@ -710,9 +711,6 @@ export default async function StockPage({ params, searchParams }: Props) {
                 <p className="py-6 text-center text-xs text-slate-500">Shareholding data not available.</p>
               )}
             </Card>
-          </section>
-
-          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
             <Card title="Quarterly Trend (₹ Cr)">
               <QuarterlyBarChart chart={quarterlyChart} />
             </Card>
@@ -720,9 +718,6 @@ export default async function StockPage({ params, searchParams }: Props) {
               <ProfitLineChart chart={annualChart} />
             </Card>
             <RoceCalculator roce={view.roce} />
-          </section>
-
-          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
             <Card title="Intrinsic Value">
               <div className="grid grid-cols-3 gap-2 py-3 text-center">
                 <div>
@@ -760,7 +755,7 @@ export default async function StockPage({ params, searchParams }: Props) {
               </div>
             </Card>
             <TradeCalculator entry={view.price} />
-          </section>
+          </MasonryGrid>
 
           <Card title="Valuation Metrics">
             <ValuationTable view={view} />
