@@ -1,7 +1,10 @@
 import * as cheerio from 'cheerio'
 import type { IndustryLevelName } from './screener-detail'
 import { cleanSymbol, parseNumber, symbolFromCompanyHref } from './screener'
+import { discoverPageNumbers, parsePageInfo } from './paging'
 import type { ParseResult } from './types'
+
+export { discoverPageNumbers, parsePageInfo } from './paging'
 
 export const SCREENER_BASE = 'https://www.screener.in'
 export const MARKET_PARSER_VERSION = 'screener-market@1.0.0'
@@ -103,29 +106,6 @@ function normalizeHeader(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
-}
-
-/** Parse the "74 results found: Showing page 1 of 3" status line. */
-export function parsePageInfo(value: string): { totalResults: number | null; page: number | null; totalPages: number | null } {
-  const cleaned = text(value)
-  const results = cleaned.match(/([\d,]+)\s+results?\s+found/i)
-  const showing = cleaned.match(/showing\s+page\s+(\d+)\s+of\s+(\d+)/i)
-  return {
-    totalResults: results ? parseNumber(results[1]) : null,
-    page: showing ? Number(showing[1]) : null,
-    totalPages: showing ? Number(showing[2]) : null,
-  }
-}
-
-/** Every page number referenced by pagination links in the HTML (plus page 1). */
-export function discoverPageNumbers(html: string): number[] {
-  const numbers = new Set<number>([1])
-  const matches = html.matchAll(/[?&]page=(\d+)/g)
-  for (const match of matches) {
-    const value = Number(match[1])
-    if (Number.isInteger(value) && value > 0) numbers.add(value)
-  }
-  return [...numbers].sort((a, b) => a - b)
 }
 
 /** Canonical source URL for a category page (with the source's `?page=` param). */

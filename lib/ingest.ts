@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { parseSource } from '@/lib/scrapers'
 import { KIND_TO_LABEL, kindFromUrl, type ParsedSymbol, type SourceKind } from '@/lib/scrapers/types'
 import { collectMarketCategory, type MarketImportReport } from '@/lib/market-collect'
+import { collectScreenerScreen, type ScreenImportStatus } from '@/lib/screen-collect'
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
@@ -92,6 +93,28 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
     return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /market or /company page, or a chartink.com scan.' }
   }
 
+  // Public screens are paginated, so preview every page (bounded) the same way
+  // the import will, otherwise the preview under-reports the real row count.
+  if (kind === 'screener-screen') {
+    const { symbols, report } = await collectScreenerScreen(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: 10, delayMs: 300 })
+    const rows = symbols.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+    return {
+      ok: symbols.length > 0,
+      kind,
+      kindLabel: KIND_TO_LABEL[kind],
+      status: report.pagesFetched > 0 ? 200 : 0,
+      stopped: false,
+      symbolCount: symbols.length,
+      rows,
+      warnings: report.warnings,
+      message: symbols.length
+        ? `Parsed ${symbols.length} symbol(s) across ${report.pagesFetched} page(s); nothing was saved.`
+        : report.pagesFetched > 0
+          ? 'No rows parsed from this source.'
+          : 'Source returned no parseable HTML.',
+    }
+  }
+
   const fetched = await fetchSourceHtml(rawUrl, kind)
   if (!fetched.html) {
     return {
@@ -165,9 +188,9 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
   return { created, updated, memberships }
 }
 
-function marketReportToStatus(report: MarketImportReport): FetchRunStatus {
-  if (report.status === 'complete') return 'SUCCEEDED'
-  if (report.status === 'failed') return 'FAILED'
+function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImportStatus): FetchRunStatus {
+  if (status === 'complete') return 'SUCCEEDED'
+  if (status === 'failed') return 'FAILED'
   return 'PARTIAL'
 }
 
@@ -265,9 +288,37 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       created = persisted.created
       updated = persisted.updated
       memberships = persisted.memberships
-      status = marketReportToStatus(report)
+      status = reportStatusToFetchRun(report.status)
       parserVersion = 'screener-market@1.0.0'
       if (status === 'FAILED') errorSummary = 'No pages could be fetched from the category listing.'
+    } else if (kind === 'screener-screen') {
+      const { symbols, report } = await collectScreenerScreen(source.url, async (url) => (await screenerFetchPolite(url)).html, {
+        maxPages: options.maxPages ?? 10,
+        delayMs: 300,
+      })
+      Object.assign(diagnostics, { report })
+      warnings.push(...report.warnings)
+      found = symbols.length
+
+      if (symbols.length) {
+        const persisted = await persistItems(scannerId, source.id, symbols.map((symbol) => ({ symbol: symbol.symbol, companyName: symbol.companyName })))
+        created = persisted.created
+        updated = persisted.updated
+        memberships = persisted.memberships
+        status = reportStatusToFetchRun(report.status)
+        parserVersion = 'screener-screen@1.0.0'
+        if (status === 'FAILED') errorSummary = 'No pages could be fetched from the screen.'
+
+        if (source.pipelineMode === ('LIST_AND_FUNDAMENTALS' satisfies PipelineMode)) {
+          const maxEnrich = options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '5')
+          const enrichResult = await enrichSymbols(symbols.map((item) => item.symbol), Math.max(0, maxEnrich), options.delayMs ?? 800)
+          enriched = enrichResult.enriched
+          diagnostics.enrichSkipped = enrichResult.skipped
+        }
+      } else {
+        status = 'FAILED'
+        errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the screen.'
+      }
     } else {
       const fetched = await fetchSourceHtml(source.url, kind)
       if (!fetched.html) {
