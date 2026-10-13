@@ -11,7 +11,9 @@ import {
   FileText,
   Globe2,
   Loader2,
+  Pencil,
   Plus,
+  Power,
   RefreshCw,
   Search,
   Settings,
@@ -126,6 +128,8 @@ export default function AdminPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [addUrl, setAddUrl] = useState('')
   const [addMode, setAddMode] = useState<'LIST_ONLY' | 'LIST_AND_FUNDAMENTALS'>('LIST_ONLY')
+  const [scannerModal, setScannerModal] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
+  const [scannerForm, setScannerForm] = useState({ name: '', category: 'Custom', description: '', urls: '', enabled: true })
 
   const selected = scanners.find((scanner) => scanner.id === activeScannerId) ?? scanners[0] ?? null
   const filteredScanners = useMemo(() => scanners.filter((scanner) => scanner.name.toLowerCase().includes(query.toLowerCase())), [scanners, query])
@@ -271,6 +275,86 @@ export default function AdminPage() {
     }
   }
 
+  function openAddScanner() {
+    setScannerForm({ name: '', category: 'Custom', description: '', urls: '', enabled: true })
+    setScannerModal({ mode: 'add' })
+  }
+
+  function openEditScanner(scanner: Scanner) {
+    setScannerForm({ name: scanner.name, category: scanner.category, description: scanner.description ?? '', urls: '', enabled: scanner.enabled })
+    setScannerModal({ mode: 'edit', id: scanner.id })
+  }
+
+  async function saveScanner() {
+    if (!scannerModal) return
+    const name = scannerForm.name.trim()
+    if (!name) {
+      setNotice('A scanner name is required.')
+      return
+    }
+    setBusy('scanner')
+    setNotice('')
+    try {
+      if (scannerModal.mode === 'add') {
+        const urls = scannerForm.urls.split('\n').map((line) => line.trim()).filter(Boolean)
+        const response = await api('/api/admin/scanners', {
+          method: 'POST',
+          body: JSON.stringify({ name, category: scannerForm.category.trim() || 'Custom', description: scannerForm.description.trim(), enabled: scannerForm.enabled, urls }),
+        })
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error || 'Could not create scanner.')
+        setNotice(`Created scanner “${name}”${urls.length ? ` with ${urls.length} source URL(s)` : ''}.`)
+      } else {
+        const response = await api(`/api/admin/scanners/${scannerModal.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name, category: scannerForm.category.trim() || 'Custom', description: scannerForm.description.trim(), enabled: scannerForm.enabled }),
+        })
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error || 'Could not update scanner.')
+        setNotice(`Updated scanner “${name}”.`)
+      }
+      setScannerModal(null)
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to save scanner.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function toggleScanner(scanner: Scanner) {
+    setBusy(`scanner:${scanner.id}`)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/scanners/${scanner.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !scanner.enabled }) })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || 'Could not update scanner.')
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to update scanner.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function removeScanner(scanner: Scanner) {
+    if (!window.confirm(`Delete scanner “${scanner.name}” and all of its sources and memberships? This cannot be undone.`)) return
+    setBusy(`scanner:${scanner.id}`)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/scanners/${scanner.id}`, { method: 'DELETE' })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error || 'Could not delete scanner.')
+      setNotice(`Deleted scanner “${scanner.name}”.`)
+      if (activeScannerId === scanner.id) setActiveScannerId(null)
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to delete scanner.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   if (!authorized) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#050b14] px-4 text-slate-300">
@@ -358,6 +442,9 @@ export default function AdminPage() {
           {activeNav === 'Scanner Management' && (
             <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
               <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
+                <button onClick={openAddScanner} className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-500/20">
+                  <Plus className="size-3.5" /> Add New Scanner
+                </button>
                 <div className="relative mb-3">
                   <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-600" />
                   <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search scanners" className="w-full rounded-lg border border-white/10 bg-black/20 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none" />
@@ -388,9 +475,21 @@ export default function AdminPage() {
                         <p className="mt-1 text-xs text-slate-500">{selected.description}</p>
                         <p className="mt-2 text-[11px] text-slate-600">{selected.category} · {selected.memberCount} persisted member(s) · {selected.sources.length} source(s)</p>
                       </div>
-                      <button onClick={() => { setShowAdd(true); setAddUrl('') }} className="flex items-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-300">
-                        <Plus className="size-3.5" /> Add source link
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!selected.enabled && <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">disabled</span>}
+                        <button onClick={() => openEditScanner(selected)} disabled={busy === 'scanner'} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">
+                          <Pencil className="size-3.5" /> Edit
+                        </button>
+                        <button onClick={() => toggleScanner(selected)} disabled={busy === `scanner:${selected.id}`} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">
+                          {busy === `scanner:${selected.id}` ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />} {selected.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button onClick={() => removeScanner(selected)} disabled={busy === `scanner:${selected.id}`} className="flex items-center gap-1.5 rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-300 hover:bg-rose-500/10">
+                          <Trash2 className="size-3.5" /> Delete
+                        </button>
+                        <button onClick={() => { setShowAdd(true); setAddUrl('') }} className="flex items-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-300">
+                          <Plus className="size-3.5" /> Add source link
+                        </button>
+                      </div>
                     </div>
 
                     <div className="overflow-x-auto p-4">
@@ -628,6 +727,50 @@ export default function AdminPage() {
               <button onClick={() => setShowAdd(false)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Cancel</button>
               <button onClick={addSource} disabled={!addUrl.trim() || busy === 'add'} className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
                 {busy === 'add' ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add source
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scannerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b1420] p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="font-semibold text-white">{scannerModal.mode === 'add' ? 'Add new scanner' : 'Edit scanner'}</h2>
+                <p className="mt-1 text-xs text-slate-500">{scannerModal.mode === 'add' ? 'Create a scanner, then attach source URLs to it.' : 'Update this scanner\u2019s details and status.'}</p>
+              </div>
+              <button onClick={() => setScannerModal(null)} className="rounded-lg p-1 text-slate-500" aria-label="Close"><X className="size-4" /></button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-xs text-slate-300">
+                Scanner name
+                <input value={scannerForm.name} onChange={(event) => setScannerForm((form) => ({ ...form, name: event.target.value }))} placeholder="e.g. Momentum Leaders" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              <label className="block text-xs text-slate-300">
+                Category
+                <input value={scannerForm.category} onChange={(event) => setScannerForm((form) => ({ ...form, category: event.target.value }))} placeholder="Custom" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              <label className="block text-xs text-slate-300">
+                Description
+                <textarea value={scannerForm.description} onChange={(event) => setScannerForm((form) => ({ ...form, description: event.target.value }))} rows={2} placeholder="What this scanner tracks" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              {scannerModal.mode === 'add' && (
+                <label className="block text-xs text-slate-300">
+                  Source URLs <span className="text-slate-600">(optional, one per line)</span>
+                  <textarea value={scannerForm.urls} onChange={(event) => setScannerForm((form) => ({ ...form, urls: event.target.value }))} rows={3} placeholder="https://www.screener.in/screens/..." className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white outline-none" />
+                </label>
+              )}
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={scannerForm.enabled} onChange={(event) => setScannerForm((form) => ({ ...form, enabled: event.target.checked }))} className="size-4 rounded border-white/20 bg-black/20" />
+                Enabled
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setScannerModal(null)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Cancel</button>
+              <button onClick={saveScanner} disabled={!scannerForm.name.trim() || busy === 'scanner'} className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                {busy === 'scanner' ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} {scannerModal.mode === 'add' ? 'Create scanner' : 'Save changes'}
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
-import { ensureCanonicalScanners } from '@/lib/scanners'
+import { ensureCanonicalScanners, sourceTypeFromKind } from '@/lib/scanners'
 import { KIND_TO_LABEL, kindFromUrl } from '@/lib/scrapers/types'
 
 export const dynamic = 'force-dynamic'
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    scanners: scanners,
+    scanners: scannersPayload,
     summary: { scanners: scanners.length, stocks: stockCount, lastRun },
   })
   } catch (error) {
@@ -67,10 +67,36 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const name = typeof body?.name === 'string' ? body.name.trim() : ''
   if (!name) return NextResponse.json({ ok: false, error: 'A scanner name is required.' }, { status: 400 })
+  if (name.length > 80) return NextResponse.json({ ok: false, error: 'Scanner name is too long.' }, { status: 400 })
   const category = typeof body?.category === 'string' && body.category.trim() ? body.category.trim() : 'Custom'
   const description = typeof body?.description === 'string' ? body.description.trim() : null
+  const enabled = typeof body?.enabled === 'boolean' ? body.enabled : true
+
+  const rawUrls = Array.isArray(body?.urls)
+    ? body.urls.filter((url: unknown): url is string => typeof url === 'string').map((url: string) => url.trim()).filter(Boolean)
+    : []
+  const parsedUrls: { url: string; kind: NonNullable<ReturnType<typeof kindFromUrl>> }[] = []
+  for (const url of rawUrls) {
+    const kind = kindFromUrl(url)
+    if (!kind) {
+      return NextResponse.json({ ok: false, error: `Unsupported source URL: ${url}. Use a screener.in /screens, /market, /company, /results or /ipo page, or a chartink.com scan.` }, { status: 400 })
+    }
+    parsedUrls.push({ url, kind })
+  }
+
   const existing = await prisma.scanner.findFirst({ where: { name }, select: { id: true } })
   if (existing) return NextResponse.json({ ok: false, error: 'A scanner with that name already exists.' }, { status: 409 })
-  const scanner = await prisma.scanner.create({ data: { name, category, description }, select: { id: true, name: true } })
+
+  const scanner = await prisma.scanner.create({ data: { name, category, description, enabled }, select: { id: true, name: true } })
+
+  const seen = new Set<string>()
+  for (const { url, kind } of parsedUrls) {
+    if (seen.has(url)) continue
+    seen.add(url)
+    await prisma.scannerSource.create({
+      data: { scannerId: scanner.id, url, type: sourceTypeFromKind(kind), pipelineMode: 'LIST_ONLY', enabled: true },
+    })
+  }
+
   return NextResponse.json({ ok: true, scanner })
 }
