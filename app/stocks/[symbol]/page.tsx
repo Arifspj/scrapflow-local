@@ -331,7 +331,15 @@ function PeerComparison({ view }: { view: StockView }) {
   )
 }
 
-type TickerContext = { items: TickerItem[]; contextQuery: string; viewAllHref: string }
+type TickerContext = {
+  items: TickerItem[]
+  contextQuery: string
+  viewAllHref: string
+  /** Name of the scanner the visitor arrived from (null for a market context). */
+  scannerName: string | null
+  /** Market/category segments the visitor arrived from (null for a scanner context). */
+  marketSegments: string[] | null
+}
 
 /**
  * Build the sibling-stock ticker for the context the visitor arrived from — a
@@ -351,6 +359,8 @@ async function buildTickerContext(scanner: string | null, market: string | null)
       items,
       contextQuery: `scanner=${encodeURIComponent(scanner)}`,
       viewAllHref: `/?scanner=${encodeURIComponent(snap.scanner?.name ?? scanner)}`,
+      scannerName: snap.scanner?.name ?? scanner,
+      marketSegments: null,
     }
   }
 
@@ -368,7 +378,13 @@ async function buildTickerContext(scanner: string | null, market: string | null)
       score: row.score,
     }))
     if (items.length < 2) return null
-    return { items, contextQuery: `market=${encodeURIComponent(segments.join('/'))}`, viewAllHref: categoryHref(segments) }
+    return {
+      items,
+      contextQuery: `market=${encodeURIComponent(segments.join('/'))}`,
+      viewAllHref: categoryHref(segments),
+      scannerName: null,
+      marketSegments: segments,
+    }
   }
 
   return null
@@ -435,13 +451,18 @@ export default async function StockPage({ params, searchParams }: Props) {
   // Collapse consecutive duplicate names (e.g. Financial Services › Financial Services).
   const industryCrumbs = view.industry.filter((level, index, all) => index === 0 || (level.name ?? '').trim().toLowerCase() !== (all[index - 1].name ?? '').trim().toLowerCase())
 
-  // A category-imported scanner stores its screener.in listing URL as its name;
-  // turn that into a friendly internal link one level up from the deepest
-  // industry, so the header points at a populated broad-industry page.
-  const scannerName = stock.scanners[0]?.scanner.name ?? null
-  const scannerSegments = marketSegments(scannerName)
-  const browseSegments = scannerSegments && scannerSegments.length > 1 ? scannerSegments.slice(0, -1) : scannerSegments
+  // Header "where did I come from" chip. Prefer the scanner/market the visitor
+  // arrived from so it matches the ticker and the list they clicked, and only
+  // fall back to this stock's own saved membership on a direct visit. A
+  // category-imported scanner stores its screener.in listing URL as its name,
+  // so peel that back one level into a populated broad-industry page.
+  const contextScannerName = ticker?.scannerName ?? null
+  const contextMarketSegments = ticker?.marketSegments ?? null
+  const scannerName = contextScannerName ?? stock.scanners[0]?.scanner.name ?? null
+  const brandSegments = contextMarketSegments ?? marketSegments(scannerName)
+  const browseSegments = brandSegments && brandSegments.length > 1 ? brandSegments.slice(0, -1) : brandSegments
   const browseCategory = browseSegments ? { href: categoryHref(browseSegments), label: categoryLabel(view.industry, browseSegments) } : null
+  const scannerHref = scannerName && !browseCategory && !/^https?:\/\//i.test(scannerName) ? `/?scanner=${encodeURIComponent(scannerName)}` : null
 
   const ccc = view.cashConversionCycle
   const cccDelta = view.cashConversionCycleDelta
@@ -503,8 +524,16 @@ export default async function StockPage({ params, searchParams }: Props) {
             >
               {browseCategory.label}
             </Link>
+          ) : scannerHref ? (
+            <Link
+              href={scannerHref}
+              title={`Back to ${scannerName}`}
+              className="hidden max-w-[16rem] truncate rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 transition-colors hover:border-cyan-500 hover:text-cyan-300 sm:block"
+            >
+              {scannerName}
+            </Link>
           ) : scannerName ? (
-            <span className="hidden rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 sm:block">{scannerName}</span>
+            <span className="hidden max-w-[16rem] truncate rounded-md border border-cyan-700/50 bg-[#14233c] px-3 py-1.5 font-medium text-cyan-400 sm:block">{scannerName}</span>
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
