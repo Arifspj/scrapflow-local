@@ -68,8 +68,8 @@ export function ImportCategoryButton({ segments }: { segments: readonly string[]
         <RefreshCw className={`size-3.5 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />
         {busy ? 'Importing…' : 'Import full category'}
       </button>
-      {message && <span className="text-[10px] text-emerald-400">{message}</span>}
-      {error && <span className="text-[10px] text-rose-400">{error}</span>}
+      {message && <span className="text-[12px] text-emerald-400">{message}</span>}
+      {error && <span className="text-[12px] text-rose-400">{error}</span>}
     </div>
   )
 }

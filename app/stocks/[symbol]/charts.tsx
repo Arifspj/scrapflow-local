@@ -17,11 +17,11 @@ function PointReadout({ chart, index, selected }: { chart: ChartSeries; index: n
   const period = chart.columns[index] ?? '—'
   return (
     <div className="mt-2 w-full rounded-md border border-[#1d2b45] bg-[#0a1220] px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">
         {selected ? 'Selected period' : 'Latest period'}: <span className="text-cyan-300">{period}</span>
       </div>
       <div className="mt-1.5 min-w-[220px] overflow-x-auto">
-        <table className="w-full text-[10px]">
+        <table className="w-full text-[12px]">
           <tbody>
             {chart.series.map((entry) => {
               const value = entry.values[index]
@@ -54,7 +54,7 @@ function PointReadout({ chart, index, selected }: { chart: ChartSeries; index: n
 
 function Legend({ chart }: { chart: ChartSeries }) {
   return (
-    <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-[#172236] pt-2 text-[10px]">
+    <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-[#172236] pt-2 text-[12px]">
       {chart.series.map((entry) => (
         <span key={entry.name} className="flex items-center gap-1">
           <span className="h-2 w-2 rounded-full" style={{ background: entry.color }} />
@@ -94,7 +94,7 @@ export function QuarterlyBarChart({ chart }: { chart: ChartSeries | null }) {
           </button>
         ))}
       </div>
-      <div className="flex justify-between px-2 pt-1 font-mono text-[9px] text-slate-400">
+      <div className="flex justify-between px-2 pt-1 font-mono text-[11px] text-slate-400">
         {chart.columns.map((column) => (
           <span key={column} className="flex-1 text-center">{column}</span>
         ))}
@@ -145,7 +145,7 @@ export function ProfitLineChart({ chart }: { chart: ChartSeries | null }) {
           />
         ))}
       </svg>
-      <div className="flex justify-between px-2 font-mono text-[9px] text-slate-400">
+      <div className="flex justify-between px-2 font-mono text-[11px] text-slate-400">
         {chart.columns.map((column) => (
           <span key={column} className="flex-1 text-center">{column.replace(/^Mar\s+/, '')}</span>
         ))}

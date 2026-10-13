@@ -66,7 +66,7 @@ export default async function HomePage({ searchParams }: Props) {
             <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-tr from-sky-600 to-emerald-500 text-lg font-bold text-white">Q</span>
             <span>
               <b className="block text-base tracking-tight text-white">Q-Scan</b>
-              <small className="text-[10px] text-slate-400">Fundamental Stock Scanner</small>
+              <small className="text-[12px] text-slate-400">Fundamental Stock Scanner</small>
             </span>
           </Link>
           <nav className="hidden items-center gap-1 text-xs font-medium md:flex">
@@ -87,13 +87,13 @@ export default async function HomePage({ searchParams }: Props) {
                 <h2 className="text-lg font-bold tracking-tight text-white">Choose your scanner</h2>
                 <p className="mt-1 text-xs text-slate-500">Pick a market idea to open its scanner page.</p>
               </div>
-              <span className="text-[11px] text-slate-500">{scannerCategories.length} scanners</span>
+              <span className="text-[13px] text-slate-500">{scannerCategories.length} scanners</span>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {scannerCategories.map(([name, text]) => (
                 <Link key={name} href={`/?scanner=${encodeURIComponent(name)}`} className="group flex flex-col justify-between rounded-xl border border-[#162844] bg-[#091527] p-4 transition hover:border-sky-500/60 hover:bg-[#0d1a2e]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
                     <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
                   </div>
                   <h3 className="mt-3 text-sm font-semibold text-white group-hover:text-sky-300">{name}</h3>
@@ -147,7 +147,7 @@ export default async function HomePage({ searchParams }: Props) {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
-      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className="text-[13px] text-slate-500">{label}</p>
       <p className="mt-2 truncate text-base font-bold text-white">{value}</p>
     </div>
   )

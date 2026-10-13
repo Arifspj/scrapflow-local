@@ -98,7 +98,7 @@ export function CategoryTable({ rows }: { rows: CategoryStockRow[] }) {
       <div className="overflow-x-auto rounded-lg border border-[#152742]">
         <table className="w-full border-collapse text-left text-xs">
           <thead>
-            <tr className="bg-[#0a1424] text-[10px] uppercase tracking-wide text-slate-400">
+            <tr className="bg-[#0a1424] text-[12px] uppercase tracking-wide text-slate-400">
               {COLUMNS.map((column) => (
                 <th key={column.key} className={`whitespace-nowrap px-3 py-2 font-semibold ${column.numeric ? 'text-right' : 'text-left'}`}>
                   <button
@@ -122,7 +122,7 @@ export function CategoryTable({ rows }: { rows: CategoryStockRow[] }) {
                   <td className="px-3 py-2">
                     <Link href={`/stocks/${encodeURIComponent(row.symbol)}`} className="block">
                       <span className="block font-semibold text-slate-100 hover:text-sky-300">{row.companyName || row.symbol}</span>
-                      <span className="font-mono text-[10px] text-slate-500">{row.symbol}</span>
+                      <span className="font-mono text-[12px] text-slate-500">{row.symbol}</span>
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-200">{fmtNum(row.price, 2)}</td>
@@ -140,11 +140,11 @@ export function CategoryTable({ rows }: { rows: CategoryStockRow[] }) {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${BADGE_TONE[row.badgeTone]}`}>
+                      <span className={`rounded border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${BADGE_TONE[row.badgeTone]}`}>
                         {row.badge}
                       </span>
                       {row.risks.map((risk) => (
-                        <span key={risk} className="rounded border border-rose-500/50 bg-rose-950/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-300">
+                        <span key={risk} className="rounded border border-rose-500/50 bg-rose-950/40 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-300">
                           ⚠ {risk}
                         </span>
                       ))}

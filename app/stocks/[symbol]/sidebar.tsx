@@ -123,7 +123,7 @@ export function Sidebar({
         } ${collapsed ? 'lg:w-[72px]' : 'lg:w-[280px]'}`}
       >
         <div className="flex items-center justify-between gap-1 border-b border-[#182338] bg-[#0c1322] px-2 py-2">
-          {!collapsed && <span className="pl-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Saved stocks</span>}
+          {!collapsed && <span className="pl-0.5 text-[12px] font-bold uppercase tracking-wider text-slate-400">Saved stocks</span>}
           <div className={`flex items-center gap-1 ${collapsed ? 'mx-auto' : ''}`}>
             <button
               type="button"
@@ -152,7 +152,7 @@ export function Sidebar({
 
         {collapsed ? (
           <div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
-            {sorted.length === 0 && <span className="px-1 py-4 text-center text-[9px] text-slate-600">—</span>}
+            {sorted.length === 0 && <span className="px-1 py-4 text-center text-[11px] text-slate-600">—</span>}
             {sorted.map((item, index) => {
               const active = item.symbol === activeSymbol
               return (
@@ -165,13 +165,13 @@ export function Sidebar({
                     active ? 'border-cyan-500/60 bg-[#12284c]' : 'border-transparent hover:bg-[#121c30]'
                   }`}
                 >
-                  <span className={`w-full truncate text-center font-mono text-[10px] font-bold ${active ? 'text-cyan-300' : 'text-slate-300'}`}>
+                  <span className={`w-full truncate text-center font-mono text-[12px] font-bold ${active ? 'text-cyan-300' : 'text-slate-300'}`}>
                     {(item.symbol || '?').slice(0, 3)}
                   </span>
-                  <span className={`inline-flex h-4 w-8 items-center justify-center rounded font-mono text-[10px] font-bold ${scoreTone(item.score)}`}>
+                  <span className={`inline-flex h-4 w-8 items-center justify-center rounded font-mono text-[12px] font-bold ${scoreTone(item.score)}`}>
                     {item.score ?? '—'}
                   </span>
-                  <span className="text-[8px] text-slate-600">{index + 1}</span>
+                  <span className="text-[10px] text-slate-600">{index + 1}</span>
                 </Link>
               )
             })}
@@ -207,18 +207,18 @@ export function Sidebar({
                   type="button"
                   key={header.key}
                   onClick={() => toggleSort(header.key)}
-                  className={`flex items-center gap-0.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 transition-colors hover:text-cyan-300 ${header.align} ${header.span} ${
+                  className={`flex items-center gap-0.5 py-1.5 text-[12px] font-bold uppercase tracking-wide text-slate-400 transition-colors hover:text-cyan-300 ${header.align} ${header.span} ${
                     header.align === 'text-right' ? 'justify-end' : 'justify-start'
                   } ${sort.key === header.key ? 'text-cyan-300' : ''}`}
                 >
                   {header.label}
-                  {sort.key === header.key && <span className="text-[8px]">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+                  {sort.key === header.key && <span className="text-[10px]">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
                 </button>
               ))}
             </div>
 
             <div className="flex-1 divide-y divide-[#131d2e] overflow-y-auto">
-              {sorted.length === 0 && <p className="px-3 py-6 text-center text-[11px] text-slate-500">No saved stock matches “{query}”.</p>}
+              {sorted.length === 0 && <p className="px-3 py-6 text-center text-[13px] text-slate-500">No saved stock matches “{query}”.</p>}
               {sorted.map((item, index) => {
                 const active = item.symbol === activeSymbol
                 return (
@@ -229,15 +229,15 @@ export function Sidebar({
                     className={`flex items-center justify-between border-l-2 px-2.5 py-2 transition-colors ${active ? 'border-cyan-400 bg-[#12284c]' : 'border-transparent hover:bg-[#121c30]'}`}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className={`w-4 shrink-0 text-center font-mono text-[10px] ${active ? 'text-cyan-300' : 'text-slate-500'}`}>{index + 1}</span>
+                      <span className={`w-4 shrink-0 text-center font-mono text-[12px] ${active ? 'text-cyan-300' : 'text-slate-500'}`}>{index + 1}</span>
                       <div className="min-w-0">
-                        <div className={`truncate text-[11px] font-semibold ${active ? 'text-cyan-200' : 'text-slate-200'}`}>{item.companyName ?? item.symbol}</div>
-                        <div className="truncate font-mono text-[9px] text-slate-500">{item.symbol}</div>
+                        <div className={`truncate text-[13px] font-semibold ${active ? 'text-cyan-200' : 'text-slate-200'}`}>{item.companyName ?? item.symbol}</div>
+                        <div className="truncate font-mono text-[11px] text-slate-500">{item.symbol}</div>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <span className="font-mono text-[11px] text-slate-300">{formatNum(item.price)}</span>
-                      <span className={`inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded px-1 font-mono text-[10px] font-bold ${scoreTone(item.score)}`}>
+                      <span className="font-mono text-[13px] text-slate-300">{formatNum(item.price)}</span>
+                      <span className={`inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded px-1 font-mono text-[12px] font-bold ${scoreTone(item.score)}`}>
                         {item.score ?? '—'}
                       </span>
                     </div>
@@ -246,7 +246,7 @@ export function Sidebar({
               })}
             </div>
 
-            <div className="border-t border-[#1a2539] bg-[#080d17] p-2 text-[11px] text-slate-400">
+            <div className="border-t border-[#1a2539] bg-[#080d17] p-2 text-[13px] text-slate-400">
               Showing {sorted.length} of {items.length} saved stock{items.length === 1 ? '' : 's'}
             </div>
           </>

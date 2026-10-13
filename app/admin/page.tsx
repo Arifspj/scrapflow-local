@@ -399,7 +399,7 @@ export default function AdminPage() {
             <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-tr from-sky-600 to-emerald-500 text-lg font-bold text-white">Q</span>
             <span>
               <b className="block text-base tracking-tight text-white">Q-Scan Admin</b>
-              <small className="text-[10px] text-slate-400">Scanner ingestion & scheduler</small>
+              <small className="text-[12px] text-slate-400">Scanner ingestion & scheduler</small>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -457,7 +457,7 @@ export default function AdminPage() {
                       className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs ${selected?.id === scanner.id ? 'bg-sky-500/15 text-white' : 'text-slate-400 hover:bg-white/5'}`}
                     >
                       <span className="min-w-0 truncate">{scanner.name}</span>
-                      <span className="ml-2 shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px]">{scanner.memberCount} / {scanner.sources.length}</span>
+                      <span className="ml-2 shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[12px]">{scanner.memberCount} / {scanner.sources.length}</span>
                     </button>
                   ))}
                   {!filteredScanners.length && <p className="px-3 py-4 text-xs text-slate-600">No scanners yet.</p>}
@@ -473,10 +473,10 @@ export default function AdminPage() {
                       <div>
                         <h2 className="text-lg font-semibold text-white">{selected.name}</h2>
                         <p className="mt-1 text-xs text-slate-500">{selected.description}</p>
-                        <p className="mt-2 text-[11px] text-slate-600">{selected.category} · {selected.memberCount} persisted member(s) · {selected.sources.length} source(s)</p>
+                        <p className="mt-2 text-[13px] text-slate-600">{selected.category} · {selected.memberCount} persisted member(s) · {selected.sources.length} source(s)</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {!selected.enabled && <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">disabled</span>}
+                        {!selected.enabled && <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-300">disabled</span>}
                         <button onClick={() => openEditScanner(selected)} disabled={busy === 'scanner'} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">
                           <Pencil className="size-3.5" /> Edit
                         </button>
@@ -494,8 +494,8 @@ export default function AdminPage() {
 
                     <div className="overflow-x-auto p-4">
                       {selected.sources.length ? (
-                        <table className="w-full min-w-[720px] text-left text-xs">
-                          <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                        <table className="w-full min-w-[865px] text-left text-xs">
+                          <thead className="text-[12px] uppercase tracking-wider text-slate-600">
                             <tr>
                               <th className="pb-3">Source</th>
                               <th className="pb-3">Type</th>
@@ -509,29 +509,29 @@ export default function AdminPage() {
                               <tr key={source.id} className="align-top">
                                 <td className="max-w-[280px] py-3">
                                   <a href={source.url} target="_blank" rel="noreferrer" className="block truncate text-sky-300 hover:underline" title={source.url}>{source.url}</a>
-                                  <span className="text-[10px] text-slate-600">{source.pipelineMode === 'LIST_AND_FUNDAMENTALS' ? 'List + fundamentals' : 'List only'}{source.enabled ? '' : ' · disabled'}</span>
+                                  <span className="text-[12px] text-slate-600">{source.pipelineMode === 'LIST_AND_FUNDAMENTALS' ? 'List + fundamentals' : 'List only'}{source.enabled ? '' : ' · disabled'}</span>
                                 </td>
                                 <td className="py-3 text-slate-400">{source.kindLabel}</td>
                                 <td className="py-3">
                                   {source.lastRun ? (
-                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${statusTone[source.lastRun.status] ?? ''}`}>{source.lastRun.status}</span>
+                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[12px] ${statusTone[source.lastRun.status] ?? ''}`}>{source.lastRun.status}</span>
                                   ) : (
-                                    <span className="text-[10px] text-slate-600">never run</span>
+                                    <span className="text-[12px] text-slate-600">never run</span>
                                   )}
                                 </td>
                                 <td className="py-3 text-slate-300">{source.lastRun?.itemsFound ?? '—'}</td>
                                 <td className="py-3">
                                   <div className="flex justify-end gap-1.5">
-                                    <button onClick={() => testSource(source)} disabled={busy === `test:${source.id}`} className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                                    <button onClick={() => testSource(source)} disabled={busy === `test:${source.id}`} className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[13px] text-slate-300 hover:bg-white/5">
                                       {busy === `test:${source.id}` ? <Loader2 className="size-3 animate-spin" /> : <Beaker className="size-3" />} Test
                                     </button>
-                                    <button onClick={() => importSource(source)} disabled={busy === `import:${source.id}`} className="flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] text-sky-300">
+                                    <button onClick={() => importSource(source)} disabled={busy === `import:${source.id}`} className="flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[13px] text-sky-300">
                                       {busy === `import:${source.id}` ? <Loader2 className="size-3 animate-spin" /> : <Database className="size-3" />} Import
                                     </button>
-                                    <button onClick={() => toggleSource(source)} disabled={busy === `toggle:${source.id}`} className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5">
+                                    <button onClick={() => toggleSource(source)} disabled={busy === `toggle:${source.id}`} className="rounded-md border border-white/10 px-2 py-1 text-[13px] text-slate-300 hover:bg-white/5">
                                       {source.enabled ? 'Disable' : 'Enable'}
                                     </button>
-                                    <button onClick={() => deleteSource(source)} disabled={busy === `delete:${source.id}`} className="rounded-md border border-rose-400/20 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/10">
+                                    <button onClick={() => deleteSource(source)} disabled={busy === `delete:${source.id}`} className="rounded-md border border-rose-400/20 px-2 py-1 text-[13px] text-rose-300 hover:bg-rose-500/10">
                                       <Trash2 className="size-3" />
                                     </button>
                                   </div>
@@ -553,14 +553,14 @@ export default function AdminPage() {
                         </div>
                         <p className="mt-2 text-xs text-slate-400">{preview.message}</p>
                         {preview.warnings.map((warning) => (
-                          <p key={warning} className="mt-1 text-[11px] text-amber-300">⚠ {warning}</p>
+                          <p key={warning} className="mt-1 text-[13px] text-amber-300">⚠ {warning}</p>
                         ))}
                         {preview.rows.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {preview.rows.slice(0, 40).map((row) => (
-                              <span key={row.symbol} className="rounded border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-slate-300" title={row.companyName ?? ''}>{row.symbol}</span>
+                              <span key={row.symbol} className="rounded border border-white/10 bg-black/30 px-2 py-0.5 text-[12px] text-slate-300" title={row.companyName ?? ''}>{row.symbol}</span>
                             ))}
-                            {preview.symbolCount > 40 && <span className="text-[10px] text-slate-600">+{preview.symbolCount - 40} more</span>}
+                            {preview.symbolCount > 40 && <span className="text-[12px] text-slate-600">+{preview.symbolCount - 40} more</span>}
                           </div>
                         )}
                       </div>
@@ -581,8 +581,8 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-xs">
-                  <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                <table className="w-full min-w-[910px] text-left text-xs">
+                  <thead className="text-[12px] uppercase tracking-wider text-slate-600">
                     <tr>
                       <th className="pb-3">Symbol</th>
                       <th className="pb-3">Company</th>
@@ -609,8 +609,8 @@ export default function AdminPage() {
                           <td className="py-2.5 text-slate-300">{n(stock.pe)}</td>
                           <td className="py-2.5 text-slate-300">{n(stock.roce, '%')}</td>
                           <td className="py-2.5 text-slate-300">{n(stock.roe, '%')}</td>
-                          <td className="py-2.5 text-[10px] text-slate-500">{when(stock.capturedAt)}</td>
-                          <td className="py-2.5 text-[10px] text-slate-500">{stock.scanners.join(', ') || '—'}</td>
+                          <td className="py-2.5 text-[12px] text-slate-500">{when(stock.capturedAt)}</td>
+                          <td className="py-2.5 text-[12px] text-slate-500">{stock.scanners.join(', ') || '—'}</td>
                         </tr>
                       ))}
                     {!stocks.length && (
@@ -628,8 +628,8 @@ export default function AdminPage() {
             <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
               <h2 className="mb-3 text-sm font-semibold text-white">Fetch runs ({runs.length})</h2>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-left text-xs">
-                  <thead className="text-[10px] uppercase tracking-wider text-slate-600">
+                <table className="w-full min-w-[985px] text-left text-xs">
+                  <thead className="text-[12px] uppercase tracking-wider text-slate-600">
                     <tr>
                       <th className="pb-3">Started</th>
                       <th className="pb-3">Scanner</th>
@@ -643,13 +643,13 @@ export default function AdminPage() {
                   <tbody className="divide-y divide-white/[0.06]">
                     {runs.map((run) => (
                       <tr key={run.id}>
-                        <td className="py-2.5 text-[10px] text-slate-500">{when(run.startedAt)}</td>
+                        <td className="py-2.5 text-[12px] text-slate-500">{when(run.startedAt)}</td>
                         <td className="py-2.5 text-slate-300">{run.scanner}</td>
-                        <td className="py-2.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${statusTone[run.status] ?? ''}`}>{run.status}</span></td>
+                        <td className="py-2.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[12px] ${statusTone[run.status] ?? ''}`}>{run.status}</span></td>
                         <td className="py-2.5 text-slate-300">{run.itemsFound}</td>
                         <td className="py-2.5 text-slate-300">{run.itemsCreated}</td>
                         <td className="py-2.5 text-slate-300">{run.itemsUpdated}</td>
-                        <td className="max-w-[320px] truncate py-2.5 text-[10px] text-slate-500" title={run.errorSummary ?? ''}>{run.errorSummary ?? '—'}</td>
+                        <td className="max-w-[320px] truncate py-2.5 text-[12px] text-slate-500" title={run.errorSummary ?? ''}>{run.errorSummary ?? '—'}</td>
                       </tr>
                     ))}
                     {!runs.length && (
@@ -684,14 +684,14 @@ export default function AdminPage() {
                 <p className="mt-1 text-xs text-slate-500">Verified screener.in screens, ready to attach to any scanner via “Add source link”.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {SUGGESTIONS.map(([label, url]) => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-slate-300 hover:border-sky-400/30 hover:text-white">{label}</a>
+                    <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-[13px] text-slate-300 hover:border-sky-400/30 hover:text-white">{label}</a>
                   ))}
                 </div>
               </div>
             </section>
           )}
 
-          <p className="flex items-center gap-1.5 text-[11px] text-slate-600"><Clock3 className="size-3" /> Data is read from the database; nothing on this page is fabricated.</p>
+          <p className="flex items-center gap-1.5 text-[13px] text-slate-600"><Clock3 className="size-3" /> Data is read from the database; nothing on this page is fabricated.</p>
         </section>
       </div>
 
@@ -712,7 +712,7 @@ export default function AdminPage() {
               </label>
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map(([label, url]) => (
-                  <button key={url} onClick={() => setAddUrl(url)} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-slate-400 hover:text-white">{label}</button>
+                  <button key={url} onClick={() => setAddUrl(url)} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[13px] text-slate-400 hover:text-white">{label}</button>
                 ))}
               </div>
               <label className="block text-xs text-slate-300">
@@ -785,7 +785,7 @@ function Stat({ label, value, detail, tone }: { label: string; value: string; de
     <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{value}</p>
-      <p className={`mt-1 text-[11px] ${tone}`}>{detail}</p>
+      <p className={`mt-1 text-[13px] ${tone}`}>{detail}</p>
     </div>
   )
 }

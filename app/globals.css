@@ -45,6 +45,22 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Site-wide typography scale: every standard `text-*` step is scaled 1.2x
+   for readability. Line-height tokens are relative ratios in Tailwind v4,
+   so they scale with the font automatically. */
+@theme {
+  --text-xs: 0.9rem;
+  --text-sm: 1.05rem;
+  --text-base: 1.2rem;
+  --text-lg: 1.35rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.8rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: 2.7rem;
+  --text-5xl: 3.6rem;
+  --text-6xl: 4.5rem;
+}
+
 :root {
   color-scheme: light;
   --background: oklch(1 0 0);

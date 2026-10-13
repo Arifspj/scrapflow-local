@@ -73,8 +73,8 @@ export function ScannerTable({ rows }: { rows: ScannerRow[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] text-left text-xs">
-        <thead className="border-b border-[#162844] text-[10px] uppercase tracking-wider text-slate-500">
+      <table className="w-full min-w-[1180px] text-left text-xs">
+        <thead className="border-b border-[#162844] text-[12px] uppercase tracking-wider text-slate-500">
           <tr>
             {columns.map((column) => (
               <th key={column.key} className="px-4 py-3">
@@ -91,7 +91,7 @@ export function ScannerTable({ rows }: { rows: ScannerRow[] }) {
             <tr key={row.id} className="hover:bg-sky-400/[.04]">
               <td className="px-4 py-3">
                 <Link href={`/stocks/${encodeURIComponent(row.symbol)}`} className="font-semibold text-white hover:text-sky-300">{row.company}</Link>
-                <span className="ml-2 text-[10px] text-slate-500">{row.symbol}</span>
+                <span className="ml-2 text-[12px] text-slate-500">{row.symbol}</span>
               </td>
               <td className="px-4 py-3">{fmt(row.ltp)}</td>
               <td className="px-4 py-3">{fmt(row.iv)}</td>

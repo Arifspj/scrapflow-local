@@ -95,7 +95,7 @@ export function RefreshButton({ symbol }: { symbol: string }) {
         <span
           role="status"
           aria-live="polite"
-          className={`absolute right-0 top-full z-50 mt-1 max-w-xs rounded border px-2 py-1 text-[10px] leading-snug shadow-lg ${
+          className={`absolute right-0 top-full z-50 mt-1 max-w-xs rounded border px-2 py-1 text-[12px] leading-snug shadow-lg ${
             phase === 'error' ? 'border-rose-500/50 bg-rose-950/90 text-rose-200' : 'border-[#1d2b45] bg-[#0b1220] text-slate-300'
           }`}
         >

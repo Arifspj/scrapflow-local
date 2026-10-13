@@ -20,7 +20,7 @@ export default function Loading() {
           </div>
           <div>
             <span className="block text-lg font-black leading-none tracking-tight text-white">Q-Scan</span>
-            <span className="block text-[10px] leading-none tracking-wider text-slate-400">Fundamental Stock Scanner</span>
+            <span className="block text-[12px] leading-none tracking-wider text-slate-400">Fundamental Stock Scanner</span>
           </div>
         </div>
         <Bar className="h-8 w-80" />

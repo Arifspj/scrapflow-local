@@ -37,7 +37,7 @@ export default async function MarketCategoryPage({ params }: Props) {
             <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-tr from-sky-600 to-emerald-500 text-lg font-bold text-white">Q</span>
             <span>
               <b className="block text-base tracking-tight text-white">Q-Scan</b>
-              <small className="text-[10px] text-slate-400">Fundamental Stock Scanner</small>
+              <small className="text-[12px] text-slate-400">Fundamental Stock Scanner</small>
             </span>
           </Link>
           <nav className="hidden items-center gap-1 text-xs font-medium md:flex">
@@ -96,7 +96,7 @@ export default async function MarketCategoryPage({ params }: Props) {
               </a>
             </p>
             {imported && (
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[13px] text-slate-500">
                 Last import: {imported.status} · {imported.pagesFetched} page(s)
                 {imported.pagesFailed > 0 ? ` · ${imported.pagesFailed} failed` : ''}
                 {imported.finishedAt ? ` · ${new Date(imported.finishedAt).toLocaleString('en-IN')}` : ''}
@@ -107,11 +107,11 @@ export default async function MarketCategoryPage({ params }: Props) {
             <ImportCategoryButton segments={segments} />
             <div className="grid w-full grid-cols-2 gap-3">
               <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
-                <p className="text-[11px] text-slate-500">Companies</p>
+                <p className="text-[13px] text-slate-500">Companies</p>
                 <p className="mt-2 text-base font-bold text-white">{rows.length}</p>
               </div>
               <div className="rounded-xl border border-[#152742] bg-[#091527] p-3">
-                <p className="text-[11px] text-slate-500">Category path</p>
+                <p className="text-[13px] text-slate-500">Category path</p>
                 <p className="mt-2 truncate font-mono text-xs text-slate-300">{sourceUrl}</p>
               </div>
             </div>

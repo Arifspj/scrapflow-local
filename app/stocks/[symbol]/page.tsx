@@ -86,10 +86,10 @@ function categoryLabel(industry: readonly IndustryLink[], segments: readonly str
 function Kpi({ label, value, tone, title }: { label: string; value: string; tone: MetricTone; title?: string }) {
   return (
     <div className="flex flex-col justify-between rounded-md border border-[#1d2b45] bg-[#0e1626] p-2" title={title}>
-      <span className="text-[10px] font-semibold uppercase text-slate-400">{label}</span>
+      <span className="text-[12px] font-semibold uppercase text-slate-400">{label}</span>
       <div className="mt-1 flex items-baseline justify-between gap-1">
         <span className={`font-mono text-sm font-bold tabular-nums ${getMetricColorClass(tone)}`}>{value}</span>
-        {tone !== 'neutral' && <span className={`text-[9px] font-bold uppercase ${getMetricColorClass(tone)}`}>{getMetricStatusText(tone)}</span>}
+        {tone !== 'neutral' && <span className={`text-[11px] font-bold uppercase ${getMetricColorClass(tone)}`}>{getMetricStatusText(tone)}</span>}
       </div>
     </div>
   )
@@ -118,8 +118,8 @@ function GrowthRow({ label, period }: { label: string; period: GrowthPeriod }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-[#1a2b47] bg-[#0b1424] px-3 py-2">
       <div className="min-w-0">
-        <div className="text-[11px] font-semibold text-slate-200">{label}</div>
-        <div className="truncate font-mono text-[9px] text-slate-500">
+        <div className="text-[13px] font-semibold text-slate-200">{label}</div>
+        <div className="truncate font-mono text-[11px] text-slate-500">
           ₹ {formatNum(period.previous)} Cr → ₹ {formatNum(period.current)} Cr
         </div>
       </div>
@@ -150,12 +150,12 @@ function GrowthPanel({
   if (!growth) return <p className="py-8 text-center text-xs text-slate-500">Quarterly data not available for growth comparison.</p>
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-500">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[12px] text-slate-500">
         <span>
           Latest quarter: <span className="text-slate-300">{latest ?? '—'}</span>
           {compare ? <> · vs <span className="text-slate-300">{compare}</span></> : null}
         </span>
-        <span className="text-[9px]">{footnote}</span>
+        <span className="text-[11px]">{footnote}</span>
       </div>
       <div className="space-y-1.5">
         {GROWTH_ROWS.map((row) => (
@@ -172,7 +172,7 @@ function FinancialTable({ table, suffix = '' }: { table: DetailTable | null; suf
     <div className="overflow-x-auto">
       <table className="w-full text-left text-2xs">
         <thead>
-          <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
+          <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
             <th className="py-1">Metric</th>
             {table.columns.map((column) => (
               <th key={column} className="py-1 text-right">
@@ -225,7 +225,7 @@ function ValuationTable({ view }: { view: StockView }) {
   return (
     <table className="w-full text-left text-xs">
       <thead>
-        <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
+        <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
           <th className="py-1">Metric</th>
           <th className="py-1 text-right">Value</th>
           <th className="py-1 text-right">Status</th>
@@ -274,14 +274,14 @@ function PeerComparison({ view }: { view: StockView }) {
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-500">
+      <div className="mb-1.5 flex items-center justify-between text-[12px] text-slate-500">
         <span>Source: screener.in peer comparison</span>
         <span>Updated {updated}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-2xs">
           <thead>
-            <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
+            <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
               <th className="py-1">Company</th>
               <th className="py-1 text-right">LTP ₹</th>
               <th className="py-1 text-right">Mar Cap ₹Cr</th>
@@ -301,7 +301,7 @@ function PeerComparison({ view }: { view: StockView }) {
                 <tr key={peer.companyId ?? `${peer.name}-${index}`} className={peer.isSelf ? 'bg-[#101d33]' : 'hover:bg-[#0f1828]'}>
                   <td className="py-1 pr-2 font-medium text-slate-200">
                     {peerSymbolLink(peer, peer.name)}
-                    {peer.isSelf && <span className="ml-1 text-[9px] font-normal text-cyan-300">(this)</span>}
+                    {peer.isSelf && <span className="ml-1 text-[11px] font-normal text-cyan-300">(this)</span>}
                   </td>
                   <td className="py-1 text-right font-mono text-slate-300">{formatNum(peer.cmp)}</td>
                   <td className="py-1 text-right font-mono text-slate-300">{formatNum(peer.marketCap, 0)}</td>
@@ -411,7 +411,7 @@ export default async function StockPage({ params }: Props) {
             </div>
             <div>
               <span className="block text-lg font-black leading-none tracking-tight text-white">Q-Scan</span>
-              <span className="hidden text-[10px] leading-none tracking-wider text-slate-400 sm:block">Fundamental Stock Scanner</span>
+              <span className="hidden text-[12px] leading-none tracking-wider text-slate-400 sm:block">Fundamental Stock Scanner</span>
             </div>
           </Link>
           {browseCategory ? (
@@ -443,7 +443,7 @@ export default async function StockPage({ params }: Props) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h1 className="truncate text-xl font-black tracking-tight text-white">{view.companyName || view.symbol}</h1>
-                    <Link href={view.sourceUrl ?? '#'} target="_blank" rel="noreferrer" className="text-[10px] text-cyan-400 hover:text-cyan-300">
+                    <Link href={view.sourceUrl ?? '#'} target="_blank" rel="noreferrer" className="text-[12px] text-cyan-400 hover:text-cyan-300">
                       {view.sourceUrl ? 'screener.in ↗' : ''}
                     </Link>
                   </div>
@@ -461,7 +461,7 @@ export default async function StockPage({ params }: Props) {
               <div className="flex min-w-0 items-center gap-3 sm:gap-5">
                 <div className="text-right">
                   <div className="font-mono text-xl font-black tracking-tight text-white sm:text-2xl">₹ {formatNum(view.price)}</div>
-                  <div className="mt-0.5 flex items-center justify-end gap-2 font-mono text-[10px] text-slate-400">
+                  <div className="mt-0.5 flex items-center justify-end gap-2 font-mono text-[12px] text-slate-400">
                     <span className="inline-flex items-center gap-1 text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Live NSE
@@ -554,7 +554,7 @@ export default async function StockPage({ params }: Props) {
               {shareholding ? (
                 <table className="w-full text-left text-2xs">
                   <thead>
-                    <tr className="border-b border-[#19263f] text-[10px] text-slate-400">
+                    <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
                       <th className="py-1">Category</th>
                       <th className="py-1 text-right">Latest</th>
                       <th className="py-1 text-right">Previous</th>
@@ -594,20 +594,20 @@ export default async function StockPage({ params }: Props) {
             <Card title="Intrinsic Value">
               <div className="grid grid-cols-3 gap-2 py-3 text-center">
                 <div>
-                  <div className="text-[10px] text-slate-400">Current Price</div>
+                  <div className="text-[12px] text-slate-400">Current Price</div>
                   <div className="mt-0.5 font-mono text-base font-black text-emerald-400">{formatInr(view.price)}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-400">Intrinsic Value</div>
+                  <div className="text-[12px] text-slate-400">Intrinsic Value</div>
                   <div className="mt-0.5 font-mono text-base font-black text-cyan-400">{formatInr(view.valuation.intrinsic)}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-400">Upside</div>
+                  <div className="text-[12px] text-slate-400">Upside</div>
                   <div className={`mt-0.5 font-mono text-base font-black ${getMetricColorClass(getMetricStatus('marginOfSafety', view.valuation.marginOfSafety))}`}>{formatPct(view.valuation.upside)}</div>
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-semibold">
+                <div className="flex justify-between text-[12px] font-semibold">
                   <span className="text-slate-300">Margin of Safety: {formatPct(view.valuation.marginOfSafety)}</span>
                   <span className="text-cyan-400">IV ₹{formatNum(view.valuation.intrinsic, 0)}</span>
                 </div>
