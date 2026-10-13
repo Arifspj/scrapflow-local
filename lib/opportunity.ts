@@ -1,4 +1,5 @@
 import type { StockView } from './stock-detail'
+import { assessGrowth, type GrowthReading } from './growth-quality'
 
 /**
  * "Early Opportunity" model — a forward-looking sibling of the classic
@@ -40,10 +41,11 @@ export type OpportunityInput = {
   roce: number | null
   roe: number | null
   opm: number | null
-  salesYoy: number | null
-  profitYoy: number | null
-  qoqSalesPct: number | null
-  qoqProfitPct: number | null
+  /** Growth readings carry period + comparability; non-comparable growth earns no points. */
+  salesGrowth: GrowthReading | null
+  profitGrowth: GrowthReading | null
+  qoqSalesGrowth: GrowthReading | null
+  qoqProfitGrowth: GrowthReading | null
   cfoPat: number | null
   cfoPat3y: number | null
   debtToEquity: number | null
@@ -139,15 +141,33 @@ export function isFinancialIndustry(industry: readonly { name: string | null }[]
 }
 
 export function opportunityInputFromView(view: StockView): OpportunityInput {
+  const qoqProfitGrowth = view.growth
+    ? assessGrowth({
+        metric: 'QoQ net profit',
+        current: view.growth.qoq.netProfit.current,
+        previous: view.growth.qoq.netProfit.previous,
+        currentPeriod: view.growth.latest,
+        previousPeriod: view.growth.qoqPrevious,
+      })
+    : null
+  const qoqSalesGrowth = view.growth
+    ? assessGrowth({
+        metric: 'QoQ sales',
+        current: view.growth.qoq.sales.current,
+        previous: view.growth.qoq.sales.previous,
+        currentPeriod: view.growth.latest,
+        previousPeriod: view.growth.qoqPrevious,
+      })
+    : null
   return {
     isFinancial: isFinancialIndustry(view.industry),
     roce: view.roce,
     roe: view.roe,
     opm: view.opm,
-    salesYoy: view.salesYoy,
-    profitYoy: view.profitYoy,
-    qoqSalesPct: view.growth?.qoq.sales.pct ?? null,
-    qoqProfitPct: view.growth?.qoq.netProfit.pct ?? null,
+    salesGrowth: view.salesGrowth,
+    profitGrowth: view.profitGrowth,
+    qoqSalesGrowth,
+    qoqProfitGrowth,
     cfoPat: view.cfoPat,
     cfoPat3y: null,
     debtToEquity: view.debtToEquity,
@@ -157,16 +177,27 @@ export function opportunityInputFromView(view: StockView): OpportunityInput {
   }
 }
 
+/** A growth reading only contributes momentum points when it is comparable. */
+function growthValue(reading: GrowthReading | null): number | null {
+  return reading && reading.comparable && reading.pct != null ? reading.pct : null
+}
+
+function nonComparableNotes(readings: (GrowthReading | null)[]): string[] {
+  return readings
+    .filter((reading): reading is GrowthReading => reading != null && !reading.comparable && reading.status !== 'missing')
+    .map((reading) => `${reading.metric}: ${reading.note ?? 'not comparable.'}`)
+}
+
 function componentParts(input: OpportunityInput): OpportunityPart[] {
   const {
     isFinancial,
     roce,
     roe,
     opm,
-    salesYoy,
-    profitYoy,
-    qoqSalesPct,
-    qoqProfitPct,
+    salesGrowth,
+    profitGrowth,
+    qoqSalesGrowth,
+    qoqProfitGrowth,
     cfoPat,
     cfoPat3y,
     debtToEquity,
@@ -179,13 +210,15 @@ function componentParts(input: OpportunityInput): OpportunityPart[] {
     'earningsAcceleration',
     'Earnings acceleration',
     [
-      { label: 'Profit YoY', value: profitYoy, score: linear(profitYoy, PROFIT_YOY_POINTS) },
-      { label: 'QoQ profit growth', value: qoqProfitPct, score: linear(qoqProfitPct, QOQ_PROFIT_POINTS) },
-      { label: 'Sales YoY', value: salesYoy, score: linear(salesYoy, SALES_YOY_POINTS) },
-      { label: 'QoQ sales growth', value: qoqSalesPct, score: linear(qoqSalesPct, QOQ_PROFIT_POINTS) },
+      { label: 'Profit YoY', value: growthValue(profitGrowth), score: linear(growthValue(profitGrowth), PROFIT_YOY_POINTS) },
+      { label: 'QoQ profit growth', value: growthValue(qoqProfitGrowth), score: linear(growthValue(qoqProfitGrowth), QOQ_PROFIT_POINTS) },
+      { label: 'Sales YoY', value: growthValue(salesGrowth), score: linear(growthValue(salesGrowth), SALES_YOY_POINTS) },
+      { label: 'QoQ sales growth', value: growthValue(qoqSalesGrowth), score: linear(growthValue(qoqSalesGrowth), QOQ_PROFIT_POINTS) },
     ],
     'Needs quarterly results.',
   )
+  const ignored = nonComparableNotes([profitGrowth, qoqProfitGrowth, salesGrowth, qoqSalesGrowth])
+  if (ignored.length) earnings.note = ignored.slice(0, 2).join(' ')
 
   const quality = partFrom(
     'businessQuality',

@@ -5,12 +5,14 @@ import { useMemo, useState } from 'react'
 
 export type OppTone = 'good' | 'warn' | 'bad' | 'neutral'
 
-export type OppCell = { text: string; tone?: OppTone }
+export type OppCell = { text: string; tone?: OppTone; title?: string; sub?: string }
 
 export type OppRow = {
   symbol: string
   company: string
   href: string
+  /** Optional note shown under the ticker (e.g. unresolved numeric code). */
+  symbolNote?: string | null
   cells: OppCell[]
 }
 
@@ -111,14 +113,17 @@ export function OppTable({
                 <Link href={row.href} className="block">
                   <span className="block font-semibold text-white hover:text-sky-300">{row.symbol}</span>
                   <span className="block max-w-[220px] truncate text-[11px] text-slate-500">{row.company}</span>
+                  {row.symbolNote ? <span className="mt-0.5 block text-[10px] text-amber-500/80">{row.symbolNote}</span> : null}
                 </Link>
               </td>
               {row.cells.map((cell, index) => (
                 <td
                   key={`${row.symbol}-${index}`}
-                  className={`px-3 py-2 ${columns[index]?.align === 'right' ? 'text-right' : 'text-left'} ${cell.tone ? TONE[cell.tone] : 'text-slate-300'}`}
+                  title={cell.title}
+                  className={`px-3 py-2 align-top ${columns[index]?.align === 'right' ? 'text-right' : 'text-left'} ${cell.tone ? TONE[cell.tone] : 'text-slate-300'}`}
                 >
-                  {cell.text}
+                  <span className="block">{cell.text}</span>
+                  {cell.sub ? <span className="mt-0.5 block text-[10px] font-normal text-slate-500">{cell.sub}</span> : null}
                 </td>
               ))}
             </tr>

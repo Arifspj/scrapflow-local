@@ -1,6 +1,7 @@
 import { computeForensicValuation, type ForensicValuation } from './intrinsic'
 import { computePiotroskiScore } from './piotroski'
 import { computeQuarterGrowth } from './growth'
+import { annualGrowthReading, type GrowthReading } from './growth-quality'
 import { buildBusinessBadges, type BusinessBadge } from './business-badges'
 import { computeQuality, type QualityResult } from './quality'
 import { computeScore, type ScoreBreakdown } from './score'
@@ -265,6 +266,10 @@ export type StockView = {
   valuation: TradeLevels
   salesYoy: number | null
   profitYoy: number | null
+  /** Year-on-year sales growth with periods/absolute values and comparability. */
+  salesGrowth: GrowthReading | null
+  /** Year-on-year profit growth with periods/absolute values and comparability. */
+  profitGrowth: GrowthReading | null
   cfoPat: number | null
   /** Latest working-capital days reported by the source (screener definition). */
   workingCapitalDays: number | null
@@ -334,6 +339,9 @@ export function buildStockView(
   const profitSeries = rowValues(detail?.profitLoss, 'net profit', 8).filter((value) => value !== 0)
   const salesYoy = yoyPercent(salesSeries)
   const profitYoy = yoyPercent(profitSeries)
+
+  const salesGrowth = annualGrowthReading(detail?.profitLoss, 'sales', 'Sales')
+  const profitGrowth = annualGrowthReading(detail?.profitLoss, 'net profit', 'Net profit')
 
   const cfoLatest = lastNonEmpty(findDetailRow(detail?.cashFlow, 'cash from operating')?.values)
   const cfo = toNumber(cfoLatest)
@@ -439,6 +447,8 @@ export function buildStockView(
     valuation,
     salesYoy,
     profitYoy,
+    salesGrowth,
+    profitGrowth,
     cfoPat,
     workingCapitalDays,
     cashConversionCycle,
