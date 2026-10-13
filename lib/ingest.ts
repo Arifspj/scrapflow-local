@@ -1,4 +1,4 @@
-import { Prisma, type FetchRunStatus, type PipelineMode } from '@prisma/client'
+import { Prisma, type FetchRunStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { parseSource } from '@/lib/scrapers'
 import { KIND_TO_LABEL, kindFromUrl, type ParsedSymbol, type SourceKind } from '@/lib/scrapers/types'
@@ -7,7 +7,8 @@ import { collectScreenerScreen, type ScreenImportStatus } from '@/lib/screen-col
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
-import { rateLimited, scrapeScreenerSymbol } from '@/lib/scrapers/resolve'
+import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
+import { isNumericCode, pendingEnrichmentSymbols } from '@/lib/enrich-queue'
 import { upsertStockFromScrape } from '@/lib/stocks'
 
 /**
@@ -194,16 +195,63 @@ function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImp
   return 'PARTIAL'
 }
 
-async function enrichSymbols(symbols: string[], max: number, delayMs: number): Promise<{ enriched: number; skipped: number }> {
+const MAX_NUMERIC_LOOKUPS = 8
+
+/**
+ * Replace numeric warehouse codes with their canonical ticker when the company
+ * name resolves to one. Codes that cannot be resolved are dropped with a warning
+ * so an invented ticker is never persisted. Lookups are capped so a listing full
+ * of BSE codes cannot exhaust the invocation budget.
+ */
+async function resolveNumericMembers<T extends { symbol: string; companyName: string | null }>(
+  items: T[],
+  warnings: string[],
+  maxLookups: number,
+): Promise<T[]> {
+  const resolvedItems: T[] = []
+  let lookups = 0
+  for (const item of items) {
+    if (!isNumericCode(item.symbol)) {
+      resolvedItems.push(item)
+      continue
+    }
+    const name = item.companyName
+    if (name == null || lookups >= maxLookups) {
+      warnings.push(`Skipped numeric security code ${item.symbol}${name ? ` (${name})` : ''}: no ticker could be established.`)
+      continue
+    }
+    lookups += 1
+    const resolved = await resolveSymbolFromName(name).catch(() => null)
+    if (resolved) resolvedItems.push({ ...item, symbol: resolved })
+    else warnings.push(`Skipped numeric security code ${item.symbol} (${name}): no ticker could be established.`)
+  }
+  return resolvedItems
+}
+
+/**
+ * Progressively attach fundamentals to list members. Only symbols without a
+ * screener detail snapshot are fetched, so repeated imports and cron runs advance
+ * instead of re-enriching the same leading symbols. Returns how many remain.
+ */
+async function enrichMembers(allSymbols: string[], max: number, delayMs: number): Promise<{ enriched: number; skipped: number; pending: number }> {
+  if (max <= 0 || !allSymbols.length) return { enriched: 0, skipped: 0, pending: 0 }
+
+  const unique = Array.from(new Set(allSymbols))
+  const already = await prisma.stock.findMany({
+    where: { symbol: { in: unique }, fundamentals: { some: { parserVersion: { startsWith: 'screener@' } } } },
+    select: { symbol: true },
+  })
+  const pending = pendingEnrichmentSymbols(unique, already.map((row) => row.symbol))
+
   let enriched = 0
   let skipped = 0
-  for (const symbol of symbols.slice(0, max)) {
+  for (const symbol of pending.slice(0, max)) {
     if (rateLimited(`ingest:${symbol}`, 2, 60_000)) {
       skipped += 1
       continue
     }
     try {
-      const company = await scrapeScreenerSymbol(symbol)
+      const company = await scrapeScreenerSymbolLite(symbol)
       if (company) {
         await upsertStockFromScrape(company)
         enriched += 1
@@ -215,8 +263,7 @@ async function enrichSymbols(symbols: string[], max: number, delayMs: number): P
     }
     if (delayMs) await delay(delayMs)
   }
-  skipped += Math.max(0, symbols.length - max)
-  return { enriched, skipped }
+  return { enriched, skipped, pending: Math.max(0, pending.length - enriched) }
 }
 
 async function finishRun(
@@ -248,6 +295,17 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
   if (!source) throw new Error('Source not found.')
 
   const kind = kindFromUrl(source.url)
+
+  // Overlap guard: never start a second run for a source that is already being
+  // imported (manual click during cron, or a retried request).
+  const inFlight = await prisma.fetchRun.findFirst({
+    where: { sourceId: source.id, status: 'RUNNING', startedAt: { gte: new Date(Date.now() - 120_000) } },
+    select: { id: true },
+  })
+  if (inFlight) {
+    return { ok: true, status: 'PARTIAL', kind, found: 0, created: 0, updated: 0, memberships: 0, enriched: 0, warnings: [], message: 'A run for this source is already in progress; skipped to avoid overlap.' }
+  }
+
   const run = await prisma.fetchRun.create({
     data: { sourceId: source.id, status: 'RUNNING', sourceUrl: source.url },
     select: { id: true },
@@ -283,14 +341,26 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       })
       Object.assign(diagnostics, { report })
       warnings.push(...report.warnings)
-      found = rows.length
-      const persisted = await persistItems(scannerId, source.id, rows.map((row) => ({ symbol: row.symbol, companyName: row.companyName, metrics: row.metrics, sourceUrl: row.sourceUrl })))
+      const marketItems = await resolveNumericMembers(
+        rows.map((row) => ({ symbol: row.symbol, companyName: row.companyName, metrics: row.metrics, sourceUrl: row.sourceUrl })),
+        warnings,
+        MAX_NUMERIC_LOOKUPS,
+      )
+      found = marketItems.length
+      const persisted = await persistItems(scannerId, source.id, marketItems)
       created = persisted.created
       updated = persisted.updated
       memberships = persisted.memberships
       status = reportStatusToFetchRun(report.status)
       parserVersion = 'screener-market@1.0.0'
       if (status === 'FAILED') errorSummary = 'No pages could be fetched from the category listing.'
+
+      if (persisted.memberships) {
+        const enrichResult = await enrichMembers(marketItems.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
+        enriched = enrichResult.enriched
+        diagnostics.enrichSkipped = enrichResult.skipped
+        diagnostics.enrichPending = enrichResult.pending
+      }
     } else if (kind === 'screener-screen') {
       const { symbols, report } = await collectScreenerScreen(source.url, async (url) => (await screenerFetchPolite(url)).html, {
         maxPages: options.maxPages ?? 10,
@@ -301,7 +371,12 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       found = symbols.length
 
       if (symbols.length) {
-        const persisted = await persistItems(scannerId, source.id, symbols.map((symbol) => ({ symbol: symbol.symbol, companyName: symbol.companyName })))
+        const screenItems = await resolveNumericMembers(
+          symbols.map((symbol) => ({ symbol: symbol.symbol, companyName: symbol.companyName })),
+          warnings,
+          MAX_NUMERIC_LOOKUPS,
+        )
+        const persisted = await persistItems(scannerId, source.id, screenItems)
         created = persisted.created
         updated = persisted.updated
         memberships = persisted.memberships
@@ -309,11 +384,11 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         parserVersion = 'screener-screen@1.0.0'
         if (status === 'FAILED') errorSummary = 'No pages could be fetched from the screen.'
 
-        if (source.pipelineMode === ('LIST_AND_FUNDAMENTALS' satisfies PipelineMode)) {
-          const maxEnrich = options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '5')
-          const enrichResult = await enrichSymbols(symbols.map((item) => item.symbol), Math.max(0, maxEnrich), options.delayMs ?? 800)
+        if (persisted.memberships) {
+          const enrichResult = await enrichMembers(screenItems.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
           enriched = enrichResult.enriched
           diagnostics.enrichSkipped = enrichResult.skipped
+          diagnostics.enrichPending = enrichResult.pending
         }
       } else {
         status = 'FAILED'
@@ -358,12 +433,10 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
             memberships = persisted.memberships
             status = 'SUCCEEDED'
 
-            if (source.pipelineMode === ('LIST_AND_FUNDAMENTALS' satisfies PipelineMode)) {
-              const maxEnrich = options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '5')
-              const enrichResult = await enrichSymbols(items.map((item) => item.symbol), Math.max(0, maxEnrich), options.delayMs ?? 800)
-              enriched = enrichResult.enriched
-              diagnostics.enrichSkipped = enrichResult.skipped
-            }
+            const enrichResult = await enrichMembers(items.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
+            enriched = enrichResult.enriched
+            diagnostics.enrichSkipped = enrichResult.skipped
+            diagnostics.enrichPending = enrichResult.pending
           } else {
             errorSummary = kind === 'chartink-scan' ? 'Chartink serves scan rows through its process API, so no rows were present in the HTML.' : 'No rows were parsed from this source.'
           }
@@ -379,10 +452,11 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
 
   await finishRun(run.id, status, { found, created, updated }, parserVersion, diagnostics as Prisma.InputJsonValue, errorSummary)
 
+  const enrichNote = enriched ? ` and enriched ${enriched} fundamental row(s)` : ''
   const message = status === 'SUCCEEDED'
-    ? `Imported ${memberships} member(s) from ${kind}.`
+    ? `Imported ${memberships} member(s) from ${kind}${enrichNote}.`
     : status === 'PARTIAL'
-      ? `Partially imported ${memberships} member(s); see warnings.`
+      ? `Partially imported ${memberships} member(s)${enrichNote}; see warnings.`
       : errorSummary ?? 'Import produced no rows.'
 
   return { ok: status !== 'FAILED', status, kind, found, created, updated, memberships, enriched, warnings, message }

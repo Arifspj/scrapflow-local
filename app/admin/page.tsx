@@ -242,7 +242,7 @@ export default function AdminPage() {
     try {
       const response = await api(`/api/admin/sources/${source.id}/import`, { method: 'POST' })
       const json = await response.json()
-      setNotice(`${source.kindLabel}: ${json.status} — ${json.message}`)
+      setNotice(`${source.kindLabel}: ${json.status} — ${json.message} [found ${json.found}, new ${json.created}, updated ${json.updated}, members ${json.memberships}, enriched ${json.enriched}]`)
       await load()
     } catch {
       setNotice('Import request failed.')

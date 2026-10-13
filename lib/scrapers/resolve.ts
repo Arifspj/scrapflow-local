@@ -1,6 +1,7 @@
 import { cleanSymbol, parseScreenerCompany, parseScreenerSearchResults, pickCompanyFromSearchResults, symbolFromCompanyHref, typoCandidates, type ScreenerSearchResult } from './screener'
 import { findRow, latestRowNumber, parsePeers, parseScreenerDetail, type ScreenerDetail } from './screener-detail'
 import { screenerFetchText } from './screener-auth'
+import { isNumericCode } from '../enrich-queue'
 import type { ParsedFundamental } from './types'
 
 const SCREENER_BASE = 'https://www.screener.in'
@@ -170,6 +171,50 @@ export async function scrapeScreenerSymbol(symbol: string): Promise<ScrapedCompa
   const hit = await resolveScreenerSymbol(clean)
   if (!hit) return null
   return buildCompany(hit, clean)
+}
+
+/**
+ * Fetch and parse only the company page required for fundamentals (no peer
+ * table). The bounded, resumable list enrichment uses this so a single
+ * serverless invocation can fill several symbols within the time limit.
+ */
+export async function scrapeScreenerSymbolLite(symbol: string): Promise<ScrapedCompany | null> {
+  const clean = cleanSymbol(symbol)
+  if (!clean) return null
+
+  const sourceUrl = `${SCREENER_BASE}/company/${clean}/`
+  const html = await screenerFetchText(sourceUrl)
+  if (!html) return null
+
+  const base = parseScreenerCompany(html, sourceUrl)
+  const resolved = base.symbols[0]
+  const detail = parseScreenerDetail(html, sourceUrl)
+  const fundamentals = deriveFundamentals(detail)
+  if (!resolved && !Object.keys(fundamentals).length) return null
+
+  return {
+    symbol: resolved?.symbol ?? clean,
+    companyName: resolved?.companyName ?? null,
+    fundamentals: Object.keys(fundamentals).length ? fundamentals : null,
+    detail,
+    sourceUrl,
+    parserVersion: base.parserVersion,
+    warnings: base.warnings,
+  }
+}
+
+/**
+ * Resolve a company name (from a listing that only exposes a numeric warehouse
+ * link) to its canonical screener ticker. Returns null when no non-numeric
+ * symbol can be established, so callers never persist an invented ticker.
+ */
+export async function resolveSymbolFromName(name: string): Promise<string | null> {
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  const picked = pickCompanyFromSearchResults(await searchScreener(trimmed), trimmed)
+  if (!picked) return null
+  const symbol = symbolFromCompanyHref(picked.url)
+  return symbol && !isNumericCode(symbol) ? symbol : null
 }
 
 const recentHits = new Map<string, number[]>()
