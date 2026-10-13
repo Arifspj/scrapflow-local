@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getPublicSnapshot, scannerCategories, display, score } from '@/lib/public-data'
+import { getPublicSnapshot, scannerCategories } from '@/lib/public-data'
+import { buildStockView } from '@/lib/stock-detail'
 import { findStocksByQuery, upsertStockFromScrape } from '@/lib/stocks'
 import { rateLimited, scrapeScreenerCompany } from '@/lib/scrapers/resolve'
 import { AutoRefresh } from './auto-refresh'
 import { ScannerSelect } from './scanner-select'
+import { ScannerTable } from './scanner-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +39,23 @@ export default async function HomePage({ searchParams }: Props) {
 
   const data = await getPublicSnapshot(params.scanner, query)
   const scanner = data.scanner
+  const rows = data.rows.map((row) => {
+    const view = buildStockView(row.stock, row.stock.fundamentals[0])
+    return {
+      id: row.stock.id,
+      symbol: row.stock.symbol,
+      company: row.stock.companyName || row.stock.symbol,
+      ltp: view.price,
+      iv: view.valuation.intrinsic,
+      mos: view.valuation.marginOfSafety,
+      pe: view.pe,
+      marketCap: view.marketCap,
+      roce: view.roce,
+      de: view.debtToEquity,
+      score: view.score,
+      updated: row.lastSeenAt.toISOString(),
+    }
+  })
 
   return (
     <main className="min-h-screen bg-[#050b14] text-slate-300 antialiased">
@@ -98,7 +117,7 @@ export default async function HomePage({ searchParams }: Props) {
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:col-span-8">
                 <Metric label="Stocks in DB" value={data.stockCount.toLocaleString()} />
                 <Metric label="Current results" value={data.total.toLocaleString()} />
-                <Metric label="High score" value={data.rows.filter((row) => (score(row) || 0) >= 70).length.toString()} />
+                <Metric label="High score" value={rows.filter((row) => (row.score ?? 0) >= 70).length.toString()} />
                 <Metric label="Last updated" value={data.latest ? data.latest.updatedAt.toLocaleDateString('en-IN') : 'Not available'} />
               </div>
             </section>
@@ -113,37 +132,9 @@ export default async function HomePage({ searchParams }: Props) {
               </div>
             </section>
             <section className="overflow-hidden rounded-xl border border-[#162844] bg-[#091527]">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left text-xs">
-                  <thead className="border-b border-[#162844] text-[10px] uppercase tracking-wider text-slate-500">
-                    <tr>{['Company', 'LTP', 'IV', 'MOS%', 'P/E', 'Market Cap', 'ROCE', 'D/E', 'Score', 'Updated'].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#12233c]">
-                    {data.rows.map((row) => {
-                      const f = row.stock.fundamentals[0]
-                      const s = score(row)
-                      return (
-                        <tr key={row.stock.id} className="hover:bg-sky-400/[.04]">
-                          <td className="px-4 py-3">
-                            <Link href={`/stocks/${encodeURIComponent(row.stock.symbol)}`} className="font-semibold text-white hover:text-sky-300">{row.stock.companyName || row.stock.symbol}</Link>
-                            <span className="ml-2 text-[10px] text-slate-500">{row.stock.symbol}</span>
-                          </td>
-                          <td className="px-4 py-3">—</td>
-                          <td className="px-4 py-3">—</td>
-                          <td className="px-4 py-3">—</td>
-                          <td className="px-4 py-3">{display(f?.peRatio)}</td>
-                          <td className="px-4 py-3">{display(f?.marketCap)}</td>
-                          <td className="px-4 py-3 text-emerald-300">{display(f?.roce, '%')}</td>
-                          <td className="px-4 py-3">{display(f?.debtToEquity)}</td>
-                          <td className="px-4 py-3 font-semibold text-amber-300">{s ?? '—'}</td>
-                          <td className="px-4 py-3 text-slate-500">{row.lastSeenAt.toLocaleDateString('en-IN')}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {!data.rows.length && (
+              {rows.length ? (
+                <ScannerTable rows={rows} />
+              ) : (
                 <div className="p-14 text-center">
                   <h2 className="text-sm font-semibold text-white">No saved records yet</h2>
                   <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This public page only reads persisted scanner memberships. Test and confirm an import in the admin panel to see source-backed results here.</p>
