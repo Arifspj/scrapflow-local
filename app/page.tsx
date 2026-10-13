@@ -104,14 +104,10 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <ScannerSelect scanners={scannerCategories} value={scanner?.name ?? scannerCategories[0][0]} />
-              <span className="text-[11px] text-slate-500">Switch scanner from the dropdown · {scannerCategories.length} available</span>
-            </div>
             <section className="grid items-end gap-4 lg:grid-cols-12">
               <div className="lg:col-span-4">
                 <p className="text-xs font-semibold uppercase tracking-[.2em] text-sky-400">{scanner?.category || 'Public scanner'}</p>
-                <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">{scanner?.name || 'No scanner data'}</h1>
+                <ScannerSelect scanners={scannerCategories} value={scanner?.name ?? scannerCategories[0][0]} variant="hero" />
                 <p className="mt-1 text-xs text-slate-500">{scanner?.description || 'Import source-backed records from the admin panel to populate this view.'}</p>
               </div>
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:col-span-8">
