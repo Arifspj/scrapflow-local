@@ -19,10 +19,18 @@ export function parsePageInfo(value: string): { totalResults: number | null; pag
   }
 }
 
-/** Every page number referenced by pagination links in the HTML (plus page 1). */
+/**
+ * Every page number referenced by pagination links in the HTML (plus page 1).
+ *
+ * Pagination hrefs are serialized in the raw HTML, so a link that already has a
+ * query string (e.g. `?sort=…&order=desc&page=2`) arrives entity-escaped as
+ * `&amp;page=2`. Without decoding that, the `&page=` never matches and only page
+ * 1 is ever discovered — which silently turns a 43-page listing into one page.
+ */
 export function discoverPageNumbers(html: string): number[] {
+  const decoded = html.replace(/&amp;/gi, '&').replace(/&#0*38;/g, '&')
   const numbers = new Set<number>([1])
-  const matches = html.matchAll(/[?&]page=(\d+)/g)
+  const matches = decoded.matchAll(/[?&]page=(\d+)/g)
   for (const match of matches) {
     const value = Number(match[1])
     if (Number.isInteger(value) && value > 0) numbers.add(value)

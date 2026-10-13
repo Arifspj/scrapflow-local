@@ -64,6 +64,21 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Page budget for the paginated *list* sources (screener screens and IPO
+ * listings). These only read a symbol table, so they are cheap per page; the
+ * cap exists purely to bound one serverless invocation. A large listing (e.g.
+ * the recent-IPOs list at ~43 pages / 1069 companies) is covered in a single
+ * run by default, and the value can be tuned with `INGEST_MAX_PAGES` without a
+ * code change.
+ */
+export const DEFAULT_LIST_MAX_PAGES = 60
+
+function listPageLimit(): number {
+  const raw = Number(process.env.INGEST_MAX_PAGES)
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_LIST_MAX_PAGES
+}
+
 function decimal(value: number | null | undefined): Prisma.Decimal | null {
   return value == null || !Number.isFinite(value) ? null : new Prisma.Decimal(value)
 }
@@ -91,6 +106,22 @@ async function fetchSourceHtml(url: string, kind: SourceKind): Promise<{ html: s
   return screenerFetchPolite(url)
 }
 
+/** Human preview message that is honest about the discovered vs fetched page count. */
+function previewMessage(
+  prefix: string,
+  count: number,
+  noun: string,
+  report: { pagesFetched: number; pagesDiscovered: number | null; limitReached: boolean },
+): string {
+  if (!count) return report.pagesFetched > 0 ? 'No rows parsed from this source.' : 'Source returned no parseable HTML.'
+  const pagePart =
+    report.pagesDiscovered && report.pagesDiscovered !== report.pagesFetched
+      ? `${report.pagesFetched} of ${report.pagesDiscovered} page(s)`
+      : `${report.pagesFetched} page(s)`
+  const limitPart = report.limitReached ? ` (page limit ${listPageLimit()} reached — raise INGEST_MAX_PAGES to fetch more)` : ''
+  return `${prefix} ${count} ${noun}(s) across ${pagePart}${limitPart}; nothing was saved.`
+}
+
 /** Fetch + parse a source without writing anything. Used by the admin preview. */
 export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   const kind = kindFromUrl(rawUrl)
@@ -101,7 +132,7 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   // Public screens are paginated, so preview every page (bounded) the same way
   // the import will, otherwise the preview under-reports the real row count.
   if (kind === 'screener-screen') {
-    const { symbols, report } = await collectScreenerScreen(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: 10, delayMs: 300 })
+    const { symbols, report } = await collectScreenerScreen(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: listPageLimit(), delayMs: 120 })
     const rows = symbols.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
     return {
       ok: symbols.length > 0,
@@ -112,18 +143,14 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
       symbolCount: symbols.length,
       rows,
       warnings: report.warnings,
-      message: symbols.length
-        ? `Parsed ${symbols.length} symbol(s) across ${report.pagesFetched} page(s); nothing was saved.`
-        : report.pagesFetched > 0
-          ? 'No rows parsed from this source.'
-          : 'Source returned no parseable HTML.',
+      message: previewMessage('Parsed', symbols.length, 'symbol', report),
     }
   }
 
   // IPO listings are paginated too, so preview every page (bounded) exactly
   // like the import will, otherwise the preview under-reports the row count.
   if (kind === 'screener-ipo') {
-    const { rows: ipoRows, report } = await collectScreenerIpo(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: 5, delayMs: 300 })
+    const { rows: ipoRows, report } = await collectScreenerIpo(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: listPageLimit(), delayMs: 120 })
     const rows = ipoRows.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
     return {
       ok: ipoRows.length > 0,
@@ -134,11 +161,7 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
       symbolCount: ipoRows.length,
       rows,
       warnings: report.warnings,
-      message: ipoRows.length
-        ? `Parsed ${ipoRows.length} IPO symbol(s) across ${report.pagesFetched} page(s); nothing was saved.`
-        : report.pagesFetched > 0
-          ? 'No rows parsed from this source.'
-          : 'Source returned no parseable HTML.',
+      message: previewMessage('Parsed', ipoRows.length, 'IPO symbol', report),
     }
   }
 
@@ -357,9 +380,11 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
   }
 
   const scannerId = source.scanner.id
-  // Keep one serverless invocation bounded; a category with more pages is
-  // reported as PARTIAL and a later run continues from where it stopped.
-  const maxPages = options.maxPages ?? 5
+  // Keep one serverless invocation bounded. Market categories enrich a member
+  // per row, so they stay on a smaller budget; symbol-list sources (screens and
+  // IPO listings) are cheap per page and may cover a whole listing in one run.
+  const marketMaxPages = options.maxPages ?? 10
+  const listMaxPages = options.maxPages ?? listPageLimit()
   const warnings: string[] = []
   let status: FetchRunStatus = 'FAILED'
   let found = 0
@@ -376,7 +401,7 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       const segments = segmentsFromMarketUrl(source.url)
       if (!segments) throw new Error('Could not read a market category path from the URL.')
       const { report, rows } = await collectMarketCategory(segments, async (url) => (await screenerFetchPolite(url)).html, {
-        maxPages,
+        maxPages: marketMaxPages,
         delayMs: 300,
       })
       Object.assign(diagnostics, { report })
@@ -403,8 +428,8 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       }
     } else if (kind === 'screener-screen') {
       const { symbols, report } = await collectScreenerScreen(source.url, async (url) => (await screenerFetchPolite(url)).html, {
-        maxPages: options.maxPages ?? 10,
-        delayMs: 300,
+        maxPages: listMaxPages,
+        delayMs: 150,
       })
       Object.assign(diagnostics, { report })
       warnings.push(...report.warnings)
@@ -436,8 +461,8 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       }
     } else if (kind === 'screener-ipo') {
       const { report, rows } = await collectScreenerIpo(source.url, async (url) => (await screenerFetchPolite(url)).html, {
-        maxPages,
-        delayMs: 300,
+        maxPages: listMaxPages,
+        delayMs: 150,
       })
       Object.assign(diagnostics, { report })
       warnings.push(...report.warnings)

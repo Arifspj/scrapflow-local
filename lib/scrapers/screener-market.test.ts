@@ -94,6 +94,11 @@ describe('discoverPageNumbers / marketPageUrl', () => {
   it('collects page numbers from links', () => {
     expect(discoverPageNumbers('<a href="?page=2">2</a><a href="?page=3">3</a>')).toEqual([1, 2, 3])
   })
+
+  it('decodes entity-escaped query strings so sorted listings stay multi-page', () => {
+    const html = '<a href="?sort=percent_gain_loss&amp;order=desc&amp;page=2">2</a><a href="?sort=percent_gain_loss&amp;order=desc&amp;page=43">43</a>'
+    expect(discoverPageNumbers(html)).toEqual([1, 2, 43])
+  })
   it('builds a paginated source url', () => {
     expect(marketPageUrl(['IN05', 'IN0501'], 2)).toBe('https://www.screener.in/market/IN05/IN0501/?page=2')
     expect(marketPageUrl(['IN05'], 1, 50)).toBe('https://www.screener.in/market/IN05/?limit=50&page=1')
