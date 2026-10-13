@@ -30,7 +30,7 @@ import { ensureStockDetail } from '@/lib/stocks'
 import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
-import { CopyDataButton } from './copy-data-button'
+import { CopyDataMenu } from './copy-data-button'
 import { RefreshButton } from './refresh-button'
 import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
@@ -499,7 +499,7 @@ export default async function StockPage({ params }: Props) {
                     )}
                   </div>
                 </div>
-                <CopyDataButton text={copyMarkdown} />
+                <CopyDataMenu text={copyMarkdown} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-2.5">

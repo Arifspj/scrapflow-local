@@ -7,6 +7,7 @@ import {
   type StockView,
 } from './stock-detail'
 import type { DetailTable } from './scrapers/screener-detail'
+import { appendPromptToMarkdown, type CopyPromptTemplate } from './copy-prompts'
 
 /**
  * Renders the currently loaded company data as clean Markdown so the user can
@@ -113,7 +114,7 @@ function peerMarkdown(view: StockView): string {
   return lines.join('\n')
 }
 
-export function buildCopyMarkdown(view: StockView): string {
+export function buildCopyMarkdown(view: StockView, prompt?: Pick<CopyPromptTemplate, 'title' | 'instruction'> | null): string {
   const lines: string[] = []
   const price = view.detail?.topRatios.currentPrice ?? view.price
   const top = view.detail?.topRatios ?? {}
@@ -271,7 +272,8 @@ export function buildCopyMarkdown(view: StockView): string {
 
   lines.push('')
   lines.push('_N/A = unavailable in the source at fetch time; never treated as zero. Values tagged "(calculated)" derive from source data via the stated formulas. Verify before investing._')
-  return lines.join('\n')
+  const report = lines.join('\n')
+  return prompt ? appendPromptToMarkdown(report, prompt) : report
 }
 
 function fmtValue(number: number | null | undefined): string {

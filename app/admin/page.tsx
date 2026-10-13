@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   Beaker,
   Check,
   Clock3,
   Database,
+  Eye,
   FileText,
   Globe2,
   Loader2,
+  MessageSquareText,
   Pencil,
   Plus,
   Power,
@@ -22,6 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { appendPromptToMarkdown } from '@/lib/copy-prompts'
 
 const SECRET_KEY = 'qscan:admin-secret'
 
@@ -71,6 +76,20 @@ type RunRow = {
   errorSummary: string | null
 }
 type Preview = { ok: boolean; kindLabel?: string; status: number; stopped: boolean; symbolCount: number; rows: { symbol: string; companyName: string | null }[]; warnings: string[]; message: string }
+type PromptRow = {
+  id: string
+  key: string
+  title: string
+  description: string | null
+  instruction: string
+  builtin: boolean
+  enabled: boolean
+  sortOrder: number
+}
+
+const PROMPT_PREVIEW_SAMPLE = `# Stock — Sample
+
+Company: Example Ltd · LTP: ₹100 · ROCE: 20%`
 
 const SUGGESTIONS = [
   ['Value stocks', 'https://www.screener.in/screens/184/value-stocks/'],
@@ -83,6 +102,7 @@ const SUGGESTIONS = [
 
 const navItems = [
   { label: 'Scanner Management', icon: Globe2 },
+  { label: 'Copy Data Prompts', icon: MessageSquareText },
   { label: 'View Stocks (DB)', icon: BarChart3 },
   { label: 'Fetch Logs', icon: FileText },
   { label: 'System Settings', icon: Settings },
@@ -117,6 +137,7 @@ export default function AdminPage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stocks, setStocks] = useState<StockRow[]>([])
   const [runs, setRuns] = useState<RunRow[]>([])
+  const [prompts, setPrompts] = useState<PromptRow[]>([])
 
   const [activeNav, setActiveNav] = useState('Scanner Management')
   const [activeScannerId, setActiveScannerId] = useState<string | null>(null)
@@ -130,6 +151,9 @@ export default function AdminPage() {
   const [addMode, setAddMode] = useState<'LIST_ONLY' | 'LIST_AND_FUNDAMENTALS'>('LIST_ONLY')
   const [scannerModal, setScannerModal] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
   const [scannerForm, setScannerForm] = useState({ name: '', category: 'Custom', description: '', urls: '', enabled: true })
+  const [promptModal, setPromptModal] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
+  const [promptForm, setPromptForm] = useState({ title: '', description: '', instruction: '', enabled: true })
+  const [promptPreview, setPromptPreview] = useState<PromptRow | null>(null)
 
   const selected = scanners.find((scanner) => scanner.id === activeScannerId) ?? scanners[0] ?? null
   const filteredScanners = useMemo(() => scanners.filter((scanner) => scanner.name.toLowerCase().includes(query.toLowerCase())), [scanners, query])
@@ -150,10 +174,11 @@ export default function AdminPage() {
     setLoading(true)
     setError('')
     try {
-      const [scannersRes, stocksRes, runsRes] = await Promise.all([
+      const [scannersRes, stocksRes, runsRes, promptsRes] = await Promise.all([
         api('/api/admin/scanners'),
         api('/api/admin/stocks'),
         api('/api/admin/runs'),
+        api('/api/admin/prompts'),
       ])
       if (!scannersRes.ok) throw new Error((await scannersRes.json().catch(() => ({}))).error || 'Could not load scanners.')
       const scannersJson = await scannersRes.json()
@@ -161,6 +186,7 @@ export default function AdminPage() {
       setSummary(scannersJson.summary ?? null)
       setStocks((await stocksRes.json()).stocks ?? [])
       setRuns((await runsRes.json()).runs ?? [])
+      setPrompts((await promptsRes.json().catch(() => ({}))).prompts ?? [])
       setAuthorized(true)
       setAuthError('')
     } catch (caught) {
@@ -350,6 +376,97 @@ export default function AdminPage() {
       await load()
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : 'Failed to delete scanner.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function openAddPrompt() {
+    setPromptForm({ title: '', description: '', instruction: '', enabled: true })
+    setPromptModal({ mode: 'add' })
+  }
+
+  function openEditPrompt(prompt: PromptRow) {
+    setPromptForm({ title: prompt.title, description: prompt.description ?? '', instruction: prompt.instruction, enabled: prompt.enabled })
+    setPromptModal({ mode: 'edit', id: prompt.id })
+  }
+
+  async function savePrompt() {
+    if (!promptModal) return
+    const title = promptForm.title.trim()
+    if (!title) {
+      setNotice('A prompt title is required.')
+      return
+    }
+    setBusy('prompt')
+    setNotice('')
+    try {
+      const payload = { title, description: promptForm.description.trim(), instruction: promptForm.instruction.trim(), enabled: promptForm.enabled }
+      const path = promptModal.mode === 'add' ? '/api/admin/prompts' : `/api/admin/prompts/${promptModal.id}`
+      const response = await api(path, { method: promptModal.mode === 'add' ? 'POST' : 'PATCH', body: JSON.stringify(payload) })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || 'Could not save the prompt.')
+      setNotice(`${promptModal.mode === 'add' ? 'Created' : 'Updated'} prompt “${title}”.`)
+      setPromptModal(null)
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to save the prompt.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function togglePrompt(prompt: PromptRow) {
+    setBusy(`prompt:${prompt.id}`)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/prompts/${prompt.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !prompt.enabled }) })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || 'Could not update the prompt.')
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to update the prompt.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function removePrompt(prompt: PromptRow) {
+    if (prompt.builtin) return
+    if (!window.confirm(`Delete prompt “${prompt.title}”? This cannot be undone.`)) return
+    setBusy(`prompt:${prompt.id}`)
+    setNotice('')
+    try {
+      const response = await api(`/api/admin/prompts/${prompt.id}`, { method: 'DELETE' })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error || 'Could not delete the prompt.')
+      setNotice(`Deleted prompt “${prompt.title}”.`)
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to delete the prompt.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function movePrompt(prompt: PromptRow, direction: -1 | 1) {
+    const index = prompts.findIndex((item) => item.id === prompt.id)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= prompts.length) return
+    const next = [...prompts]
+    const [moved] = next.splice(index, 1)
+    next.splice(target, 0, moved)
+    setPrompts(next)
+    setBusy('prompt:reorder')
+    setNotice('')
+    try {
+      const response = await api('/api/admin/prompts/reorder', { method: 'POST', body: JSON.stringify({ ids: next.map((item) => item.id) }) })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || 'Could not reorder prompts.')
+      setPrompts(json.prompts ?? next)
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Failed to reorder prompts.')
+      await load()
     } finally {
       setBusy(null)
     }
@@ -571,6 +688,84 @@ export default function AdminPage() {
             </div>
           )}
 
+          {activeNav === 'Copy Data Prompts' && (
+            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+              <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Copy Data Prompts ({prompts.length})</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Controls the “Copy Data” dropdown on public stock pages. Enabled prompts appear in the order below; edits go live without a redeploy.
+                  </p>
+                </div>
+                <button onClick={openAddPrompt} className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-500/20">
+                  <Plus className="size-3.5" /> Add Prompt
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] text-left text-xs">
+                  <thead className="text-[12px] uppercase tracking-wider text-slate-600">
+                    <tr>
+                      <th className="pb-3">Title</th>
+                      <th className="pb-3">Description</th>
+                      <th className="pb-3">Instruction</th>
+                      <th className="pb-3">Status</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.06]">
+                    {prompts.map((prompt, index) => (
+                      <tr key={prompt.id} className="align-top">
+                        <td className="max-w-[240px] py-3">
+                          <span className="flex items-center gap-2 font-medium text-slate-100">
+                            {prompt.title}
+                            {prompt.builtin && <span className="rounded-full border border-cyan-700/50 px-1.5 py-0.5 text-[10px] text-cyan-400">built-in</span>}
+                          </span>
+                          <span className="text-[12px] text-slate-600">{prompt.key}</span>
+                        </td>
+                        <td className="max-w-[220px] py-3 text-slate-400">{prompt.description ?? '—'}</td>
+                        <td className="max-w-[260px] py-3 text-[12px] text-slate-500">
+                          {prompt.instruction ? <span className="line-clamp-2">{prompt.instruction}</span> : <span className="italic text-slate-600">data only (no instruction)</span>}
+                        </td>
+                        <td className="py-3">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[12px] ${prompt.enabled ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-slate-400 bg-white/5 border-white/10'}`}>
+                            {prompt.enabled ? 'enabled' : 'disabled'}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex justify-end gap-1.5">
+                            <button onClick={() => movePrompt(prompt, -1)} disabled={index === 0 || busy === 'prompt:reorder'} title="Move up" className="rounded-md border border-white/10 p-1.5 text-slate-400 hover:bg-white/5 disabled:opacity-30">
+                              <ArrowUp className="size-3" />
+                            </button>
+                            <button onClick={() => movePrompt(prompt, 1)} disabled={index === prompts.length - 1 || busy === 'prompt:reorder'} title="Move down" className="rounded-md border border-white/10 p-1.5 text-slate-400 hover:bg-white/5 disabled:opacity-30">
+                              <ArrowDown className="size-3" />
+                            </button>
+                            <button onClick={() => setPromptPreview(prompt)} title="Preview" className="rounded-md border border-white/10 p-1.5 text-slate-400 hover:bg-white/5">
+                              <Eye className="size-3" />
+                            </button>
+                            <button onClick={() => openEditPrompt(prompt)} className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[13px] text-slate-300 hover:bg-white/5">
+                              <Pencil className="size-3" /> Edit
+                            </button>
+                            <button onClick={() => togglePrompt(prompt)} disabled={busy === `prompt:${prompt.id}`} className="rounded-md border border-white/10 px-2 py-1 text-[13px] text-slate-300 hover:bg-white/5">
+                              {busy === `prompt:${prompt.id}` ? <Loader2 className="size-3 animate-spin" /> : prompt.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button onClick={() => removePrompt(prompt)} disabled={prompt.builtin || busy === `prompt:${prompt.id}`} title={prompt.builtin ? 'Built-in prompts cannot be deleted' : 'Delete'} className="rounded-md border border-rose-400/20 px-2 py-1 text-[13px] text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-30">
+                              <Trash2 className="size-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!prompts.length && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-600">No prompts yet. They are seeded automatically on first load.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {activeNav === 'View Stocks (DB)' && (
             <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
               <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -773,6 +968,63 @@ export default function AdminPage() {
                 {busy === 'scanner' ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} {scannerModal.mode === 'add' ? 'Create scanner' : 'Save changes'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {promptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0b1420] p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold text-white"><MessageSquareText className="size-4 text-sky-400" /> {promptModal.mode === 'add' ? 'Add prompt' : 'Edit prompt'}</h2>
+                <p className="mt-1 text-xs text-slate-500">This instruction is appended below the copied stock data so one paste gives an AI the full context.</p>
+              </div>
+              <button onClick={() => setPromptModal(null)} className="rounded-lg p-1 text-slate-500" aria-label="Close"><X className="size-4" /></button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-xs text-slate-300">
+                Title
+                <input value={promptForm.title} onChange={(event) => setPromptForm((form) => ({ ...form, title: event.target.value }))} maxLength={80} placeholder="e.g. Multibagger Research" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              <label className="block text-xs text-slate-300">
+                Description <span className="text-slate-600">(shown under the option)</span>
+                <input value={promptForm.description} onChange={(event) => setPromptForm((form) => ({ ...form, description: event.target.value }))} maxLength={200} placeholder="Long-term growth potential and triggers" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" />
+              </label>
+              <label className="block text-xs text-slate-300">
+                Instruction <span className="text-slate-600">({promptForm.instruction.length}/8000)</span>
+                <textarea value={promptForm.instruction} onChange={(event) => setPromptForm((form) => ({ ...form, instruction: event.target.value }))} maxLength={8000} rows={9} placeholder="Ask the AI to analyse the pasted data…" className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 font-mono text-xs text-white outline-none" />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={promptForm.enabled} onChange={(event) => setPromptForm((form) => ({ ...form, enabled: event.target.checked }))} className="size-4 rounded border-white/20 bg-black/20" />
+                Enabled (visible in the public dropdown)
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setPromptModal(null)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Cancel</button>
+              <button onClick={savePrompt} disabled={!promptForm.title.trim() || busy === 'prompt'} className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                {busy === 'prompt' ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} {promptModal.mode === 'add' ? 'Create prompt' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {promptPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0b1420] p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold text-white"><Eye className="size-4 text-sky-400" /> Preview · {promptPreview.title}</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {promptPreview.instruction ? 'The selected option copies the stock data plus this prompt:' : 'This option copies stock data only — no prompt is appended.'}
+                </p>
+              </div>
+              <button onClick={() => setPromptPreview(null)} className="rounded-lg p-1 text-slate-500" aria-label="Close"><X className="size-4" /></button>
+            </div>
+            <pre className="mt-4 max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-black/30 p-4 text-[12px] leading-relaxed text-slate-300">
+              {appendPromptToMarkdown(PROMPT_PREVIEW_SAMPLE, promptPreview)}
+            </pre>
           </div>
         </div>
       )}

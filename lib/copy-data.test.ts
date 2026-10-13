@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildCopyMarkdown } from './copy-data'
+import { BUILTIN_COPY_PROMPT_KEY, CANONICAL_COPY_PROMPTS } from './copy-prompts'
 import { parsePeers, parseScreenerDetail } from './scrapers/screener-detail'
 import { buildStockView, formatInr, formatNum, formatPct } from './stock-detail'
 
@@ -173,5 +174,18 @@ describe('buildCopyMarkdown', () => {
     expect(markdown).toContain('## Data Quality Warnings & Notes')
     expect(markdown.toLowerCase()).not.toContain('password')
     expect(markdown.toLowerCase()).not.toContain('screener_email')
+  })
+
+  it('appends the selected research prompt but keeps Normal Data untouched', () => {
+    const normal = CANONICAL_COPY_PROMPTS.find((prompt) => prompt.key === BUILTIN_COPY_PROMPT_KEY)
+    const research = CANONICAL_COPY_PROMPTS.find((prompt) => prompt.key === 'multibagger-research')
+    expect(normal && research).toBeTruthy()
+
+    expect(buildCopyMarkdown(view, normal)).toBe(markdown)
+
+    const withPrompt = buildCopyMarkdown(view, research!)
+    expect(withPrompt.startsWith(markdown)).toBe(true)
+    expect(withPrompt).toContain(`## AI Analysis Prompt — ${research!.title}`)
+    expect(withPrompt).toContain(research!.instruction)
   })
 })

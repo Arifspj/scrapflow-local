@@ -7,6 +7,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Admin-managed prompt templates offered in the public "Copy Data" dropdown on
+/// stock detail pages. `Normal Data` is a built-in data-only option
+/// (`builtin = true`, empty `instruction`); everything else is editable.
+model CopyPrompt {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  description String?
+  instruction String
+  builtin     Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
 enum ScannerSourceType {
   CHARTINK_SCAN
   SCREENER_SCREEN
