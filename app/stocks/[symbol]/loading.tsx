@@ -59,7 +59,7 @@ export default function Loading() {
             </div>
             <div className="mt-3 flex items-center gap-2 text-slate-400">
               <span className="size-3.5 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-400" />
-              <span>Fetching latest company data from screener.in…</span>
+              <span>Fetching latest company data....</span>
             </div>
           </Card>
 
