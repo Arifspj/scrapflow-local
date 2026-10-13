@@ -210,16 +210,25 @@ function ValuationTable({ view }: { view: StockView }) {
   const { valuation } = view
   const mosTone = getMetricStatus('marginOfSafety', valuation.marginOfSafety)
   const peTone = getMetricStatus('pe', view.pe)
-  const roceTone = getMetricStatus('roce', valuation.medianRoce)
+  const overTone: MetricTone = view.valuation.noEquity ? 'bad' : (view.valuation.overvaluation ?? 0) > 30 ? 'bad' : (view.valuation.overvaluation ?? 0) > 0 ? 'warn' : 'good'
+  const methodLabel =
+    valuation.method === 'debt-adjusted'
+      ? 'Debt-adjusted EV/EBIT (cash trap)'
+      : valuation.method === 'no-growth'
+        ? 'Graham + no-growth value'
+        : valuation.method === 'blended'
+          ? 'Blended Graham + growth'
+          : '—'
   const rows: { label: string; value: string; tone: MetricTone }[] = [
     { label: 'Current Price', value: formatInr(view.price), tone: 'neutral' },
     { label: 'Intrinsic Value', value: formatInr(valuation.intrinsic, 0), tone: mosTone },
     { label: 'Margin of Safety', value: formatPct(valuation.marginOfSafety), tone: mosTone },
+    { label: 'Overvaluation vs Fair Value', value: valuation.noEquity ? 'No Equity Value' : formatPct(valuation.overvaluation ?? 0), tone: overTone },
     { label: 'Graham Number', value: formatInr(valuation.graham), tone: 'info' },
-    { label: 'Median Sales Growth (5Y)', value: formatPct(valuation.medianSalesGrowth), tone: 'neutral' },
-    { label: 'Max P/E (5Y growth × 1.5)', value: formatNum(valuation.maxPe, 1), tone: 'neutral' },
-    { label: 'Median ROCE (5Y)', value: formatPct(valuation.medianRoce), tone: roceTone },
-    { label: 'Max P/BV (5Y ROCE ÷ 8)', value: formatNum(valuation.maxPbv, 2), tone: 'neutral' },
+    { label: 'Fair Value (Growth)', value: formatInr(valuation.growthValue), tone: 'info' },
+    { label: 'Fair P/E (8.5 + 2 × growth)', value: formatNum(valuation.fairPe, 1), tone: 'neutral' },
+    { label: 'Growth Used (capped 15%)', value: formatPct(valuation.growthRate), tone: 'neutral' },
+    { label: 'Method', value: view.valuation.method === 'none' ? 'n/a' : view.valuation.method, tone: 'neutral' },
     { label: 'Stock P/E', value: formatNum(view.pe, 1), tone: peTone },
   ]
   return (
@@ -337,7 +346,7 @@ export default async function StockPage({ params }: Props) {
     symbol: item.view.symbol,
     companyName: item.view.companyName,
     price: item.view.price,
-    iv: item.view.valuation.fair,
+    iv: item.view.valuation.intrinsic,
     score: item.view.score,
   }))
 
@@ -617,8 +626,14 @@ export default async function StockPage({ params }: Props) {
                 </div>
               </div>
               <div className="mt-3 rounded border border-[#1b2d4b] bg-[#0a1220] p-2 text-2xs leading-snug">
-                <div className="font-medium text-emerald-400">Screener.in Graham number: √(EPS × Book Value × max PE × max P/BV)</div>
-                <div className="text-slate-400">max PE = 5-yr median sales growth × 1.5 (capped 8–100); max P/BV = 5-yr median ROCE ÷ 8 (capped 1–10). Not investment advice.</div>
+                <div className="font-medium text-emerald-400">
+                  {view.valuation.method === 'debt-adjusted'
+                    ? 'Debt-adjusted EV/EBIT value — Graham & growth-P/E disabled (cash trap)'
+                    : 'Blended fair value: average of Graham number and growth fair value'}
+                </div>
+                <div className="text-slate-400">
+                  Fair P/E = min(8.5 + 2 × growth, 38.5); growth is the latest YoY net profit (0% when EBIT is negative, capped 5% when other income &gt; 40% of PBT, hard cap 15%). Margin of safety is 0% when the price is above fair value. Not investment advice.
+                </div>
               </div>
             </Card>
             <TradeCalculator entry={view.price} />

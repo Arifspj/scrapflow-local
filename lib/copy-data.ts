@@ -81,7 +81,7 @@ function buildQualityNotes(view: StockView, price: number | null): QualityNote[]
   if (view.valuation.intrinsic != null && price != null) {
     notes.push({
       kind: 'info',
-      text: `Intrinsic value is a calculated estimate (screener.in Graham method); margin of safety and upside derive from it and are NOT source-reported.`,
+      text: `Intrinsic value is a calculated estimate (blended Graham + capped growth fair value, with a debt-adjusted fallback for cash traps); margin of safety and upside derive from it and are NOT source-reported.`,
     })
   }
 
@@ -176,18 +176,29 @@ export function buildCopyMarkdown(view: StockView): string {
   const val = view.valuation
   lines.push('')
   lines.push('## Valuation (calculated)')
-  lines.push(`- Method: screener.in Graham number — IV = √(EPS × BV × maxP/E × maxP/BV); maxP/E = (median 5-yr sales growth × 1.5) clamped 8–100; maxP/BV = (median 5-yr ROCE ÷ 8) clamped 1–10.`)
+  lines.push(
+    `- Method: ${
+      val.method === 'debt-adjusted'
+        ? 'debt-adjusted EV/EBIT — Graham & growth-P/E disabled because the stock is a cash trap (negative CFO or CFO/PAT < 0.3)'
+        : val.method === 'no-growth'
+          ? 'Graham number + no-growth fair value (growth ≤ 0 → Fair P/E floor 11; blended = min of both)'
+          : 'blended Graham + growth fair value (growth > 0 → average of the two)'
+    }.`,
+  )
   lines.push(`- Calculation date: ${fetched}`)
-  lines.push(`- EPS (input): ${value(view.eps, (n) => formatInr(n))}`)
+  lines.push(`- EPS (price ÷ P/E, else reported): ${value(val.eps, (n) => formatInr(n))}`)
   lines.push(`- Book Value (input): ${value(view.bookValue, (n) => formatInr(n))}`)
-  lines.push(`- Median Sales Growth (5Y, input): ${value(val.medianSalesGrowth, (n) => formatPct(n))}`)
-  lines.push(`- Median ROCE (5Y, input): ${value(val.medianRoce, (n) => formatPct(n))}`)
-  lines.push(`- Max P/E (intermediate): ${formatNum(val.maxPe, 1)}`)
-  lines.push(`- Max P/BV (intermediate): ${formatNum(val.maxPbv, 2)}`)
-  lines.push(`- Intrinsic Value: ${value(val.intrinsic, (n) => formatInr(n, 0))}`)
-  lines.push(`- Margin of Safety: ${value(val.marginOfSafety, (n) => formatPct(n))} (calculated = (IV − price) / IV × 100)`)
+  lines.push(`- Growth used (latest YoY net profit; 0% if EBIT < 0, else capped 0–5% when other income > 40% of PBT, hard cap 15%): ${value(val.growthRate, (n) => formatPct(n))}`)
+  lines.push(`- Fair P/E (min(8.5 + 2 × growth, 38.5), no-growth floor 11): ${value(val.fairPe, (n) => formatNum(n, 1))}`)
+  lines.push(`- Graham Number (√(22.5 × EPS × BV)): ${value(val.graham, (n) => formatInr(n, 0))}`)
+  lines.push(`- Fair Value (Growth, EPS × Fair P/E): ${value(val.growthValue, (n) => formatInr(n, 0))}`)
+  lines.push(`- Intrinsic Value (${val.method === 'debt-adjusted' ? 'debt-adjusted' : 'blended'}): ${value(val.intrinsic, (n) => formatInr(n, 0))}`)
+  lines.push(`- Margin of Safety: ${value(val.marginOfSafety, (n) => formatPct(n))} (discount to fair value; 0.0% when the price is above fair value)`)
+  lines.push(`- Overvaluation vs Fair Value: ${val.noEquity ? 'No Equity Value' : value(val.overvaluation, (n) => formatPct(n))} (premium when the price is above fair value)`)
   lines.push(`- Upside / Downside: ${value(val.upside, (n) => formatPct(n))} (calculated = (IV − price) / price × 100)`)
-  lines.push(`- Graham Number (√(22.5 × EPS × BV), reference): ${value(val.graham, (n) => formatInr(n, 0))}`)
+  if (val.method === 'debt-adjusted') {
+    lines.push(`- Debt-Adjusted inputs: EBITDA ${value(val.ebitda, (n) => formatCr(n))} × ${val.multiple ?? 'N/A'} − Net Debt ${value(val.netDebt, (n) => formatCr(n))}`)
+  }
 
   // Growth
   lines.push('')

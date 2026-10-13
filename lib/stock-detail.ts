@@ -1,4 +1,4 @@
-import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
+import { computeForensicValuation, type ForensicValuation } from './intrinsic'
 import { computePiotroskiScore } from './piotroski'
 import { computeQuarterGrowth } from './growth'
 import { buildBusinessBadges, type BusinessBadge } from './business-badges'
@@ -95,6 +95,34 @@ export function annualNumbers(table: DetailTable | null | undefined, label: stri
   return values
 }
 
+/** Order-preserving numeric series for a row, trailing period last (TTM included). */
+function seriesWithTtm(table: DetailTable | null | undefined, label: string): number[] {
+  const row = findDetailRow(table, label)
+  if (!row) return []
+  return row.values.map((value) => toNumber(value)).filter((value): value is number => value != null)
+}
+
+/** Cumulative numerator ÷ denominator over the last `window` aligned periods. */
+function cumulativeRatio(numerators: number[], denominators: number[], window = 3): number | null {
+  const length = Math.min(numerators.length, denominators.length)
+  if (!length) return null
+  const take = Math.min(window, length)
+  let sumNumerator = 0
+  let sumDenominator = 0
+  let count = 0
+  for (let index = length - take; index < length; index += 1) {
+    const numerator = numerators[index]
+    const denominator = denominators[index]
+    if (numerator != null && denominator != null && Math.abs(denominator) > 1e-9) {
+      sumNumerator += numerator
+      sumDenominator += denominator
+      count += 1
+    }
+  }
+  if (!count || sumDenominator === 0) return null
+  return sumNumerator / sumDenominator
+}
+
 export type ChartSeries = {
   columns: string[]
   series: { name: string; color: string; values: number[] }[]
@@ -161,46 +189,24 @@ export function capCategory(marketCap: number | null): string | null {
   return 'Micro Cap'
 }
 
-export type TradeLevels = {
-  /** Screener.in published Graham-number intrinsic value. */
-  intrinsic: number | null
-  /** Alias of `intrinsic`, kept for the sidebar/calculator/KPI consumers. */
-  fair: number | null
-  /** Classic Graham number sqrt(22.5 × EPS × BV), for reference. */
-  graham: number | null
-  maxPe: number
-  maxPbv: number
-  medianSalesGrowth: number | null
-  medianRoce: number | null
-  /** Intrinsic value vs price: (IV − price) / price. */
-  upside: number | null
-  /** Margin of safety vs intrinsic value: (IV − price) / IV. */
-  marginOfSafety: number | null
-}
+/** Fair-value levels produced by the forensic model (see intrinsic.ts). */
+export type TradeLevels = ForensicValuation
 
 export function deriveValuation(input: {
   price: number | null
-  eps: number | null
+  pe: number | null
   bookValue: number | null
-  sales: number[]
-  roce: number[]
+  eps: number | null
+  profitSeries: number[]
+  ebit: number | null
+  otherIncome: number | null
+  profitBeforeTax: number | null
+  cfo: number | null
+  cfoPat3y: number | null
+  debt: number | null
+  shares: number | null
 }): TradeLevels {
-  const { price, eps, bookValue, sales, roce } = input
-  const intrinsic = computeIntrinsicValue({ eps, bookValue, sales, roce })
-  const graham = eps != null && bookValue != null && eps > 0 && bookValue > 0 ? Math.sqrt(22.5 * eps * bookValue) : null
-  const iv = intrinsic.intrinsicValue
-  const upside = iv != null && price != null && price > 0 ? ((iv - price) / price) * 100 : null
-  return {
-    intrinsic: iv,
-    fair: iv,
-    graham,
-    maxPe: intrinsic.maxPe,
-    maxPbv: intrinsic.maxPbv,
-    medianSalesGrowth: intrinsic.medianSalesGrowth,
-    medianRoce: intrinsic.medianRoce,
-    upside,
-    marginOfSafety: marginOfSafety(price, iv),
-  }
+  return computeForensicValuation(input)
 }
 
 export type Badge = { label: string; tone: 'good' | 'warn' | 'info' | 'neutral' }
@@ -324,8 +330,28 @@ export function buildStockView(
   const workingCapitalDays = toNumber(lastNonEmpty(findDetailRow(detail?.ratios, 'working capital days')?.values))
 
   const annualSales = annualNumbers(detail?.profitLoss, 'sales')
-  const roceSeries = annualNumbers(detail?.ratios, 'roce')
-  const valuation = deriveValuation({ price, eps, bookValue, sales: annualSales, roce: roceSeries })
+  const netProfitSeries = seriesWithTtm(detail?.profitLoss, 'net profit')
+  const cashFlowSeries = seriesWithTtm(detail?.cashFlow, 'cash from operating')
+  const cfoPat3y = cumulativeRatio(cashFlowSeries, netProfitSeries)
+  const ebit = toNumber(lastNonEmpty(findDetailRow(detail?.profitLoss, 'operating profit')?.values))
+  const otherIncome = toNumber(lastNonEmpty(findDetailRow(detail?.profitLoss, 'other income')?.values))
+  const profitBeforeTax = toNumber(lastNonEmpty(findDetailRow(detail?.profitLoss, 'profit before tax')?.values))
+  const borrowingsLatest = toNumber(lastNonEmpty(findDetailRow(detail?.balanceSheet, 'borrowings')?.values))
+  const shares = marketCap != null && price != null && price > 0 ? marketCap / price : null
+  const valuation = deriveValuation({
+    price,
+    pe,
+    bookValue,
+    eps,
+    profitSeries: netProfitSeries,
+    ebit,
+    otherIncome,
+    profitBeforeTax,
+    cfo,
+    cfoPat3y,
+    debt: borrowingsLatest,
+    shares,
+  })
   const piotroskiResult = computePiotroskiScore({
     netProfit: annualNumbers(detail?.profitLoss, 'net profit'),
     cashFromOps: annualNumbers(detail?.cashFlow, 'cash from operating'),
@@ -360,7 +386,8 @@ export function buildStockView(
     piotroski: piotroskiResult.score,
     pe,
     netProfit,
-    marginOfSafety: valuation.marginOfSafety,
+    overvaluation: valuation.overvaluation,
+    noEquity: valuation.noEquity,
     upside: valuation.upside,
     intrinsic: valuation.intrinsic,
     qoqSalesPct: growth?.qoq.sales.pct ?? null,

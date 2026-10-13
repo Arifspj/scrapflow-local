@@ -11,11 +11,12 @@ function input(overrides: Partial<QualityInput>): QualityInput {
     debtToEquity: null,
     debtToAssets: null,
     piotroski: null,
-    pe: null,
-    netProfit: null,
-    marginOfSafety: null,
-    upside: null,
-    intrinsic: null,
+  pe: null,
+  netProfit: null,
+  overvaluation: null,
+  noEquity: false,
+  upside: null,
+  intrinsic: null,
     qoqSalesPct: null,
     qoqProfitPct: null,
     ...overrides,
@@ -25,7 +26,7 @@ function input(overrides: Partial<QualityInput>): QualityInput {
 describe('computeQuality', () => {
   it('awards MULTIBAGGER only when every criterion passes and no risk fires', () => {
     const result = computeQuality(
-      input({ roce: 28, roe: 22, salesYoy: 35, profitYoy: 25, cfoPat: 0.8, debtToEquity: 0.3, debtToAssets: 0.15, piotroski: 8, pe: 15, netProfit: 100, marginOfSafety: 20, upside: 24, intrinsic: 700, qoqSalesPct: 5, qoqProfitPct: 6 }),
+      input({ roce: 28, roe: 22, salesYoy: 35, profitYoy: 25, cfoPat: 0.8, debtToEquity: 0.3, debtToAssets: 0.15, piotroski: 8, pe: 15, netProfit: 100, overvaluation: null, upside: 24, intrinsic: 700, qoqSalesPct: 5, qoqProfitPct: 6 }),
     )
     expect(result.primary.label).toBe('MULTIBAGGER')
     expect(result.primary.tone).toBe('good')
@@ -66,15 +67,18 @@ describe('computeQuality', () => {
     expect(result.primary.label).toBe('WATCH')
   })
 
-  it('triggers OVERPRICED for valid valuation but not for a missing one', () => {
-    const overpriced = computeQuality(input({ intrinsic: 100, marginOfSafety: -60 }))
+  it('triggers OVERPRICED above a 30% premium, and for a wiped-out equity value', () => {
+    const overpriced = computeQuality(input({ intrinsic: 100, overvaluation: 60 }))
     expect(overpriced.risks.find((risk) => risk.kind === 'overpriced')).toBeDefined()
 
-    const noFairValue = computeQuality(input({ intrinsic: null, marginOfSafety: -60 }))
+    const noFairValue = computeQuality(input({ intrinsic: null, overvaluation: null, noEquity: false }))
     expect(noFairValue.risks.find((risk) => risk.kind === 'overpriced')).toBeUndefined()
 
-    const notOverpriced = computeQuality(input({ intrinsic: 100, marginOfSafety: -40 }))
+    const notOverpriced = computeQuality(input({ intrinsic: 100, overvaluation: 20 }))
     expect(notOverpriced.risks.find((risk) => risk.kind === 'overpriced')).toBeUndefined()
+
+    const wipedOut = computeQuality(input({ intrinsic: 0.4, noEquity: true }))
+    expect(wipedOut.risks.find((risk) => risk.kind === 'overpriced')).toBeDefined()
   })
 
   it('flags SLOWING only when both QoQ sales and profit are negative', () => {
@@ -99,7 +103,7 @@ describe('computeQuality', () => {
 
   it('downgrades MULTIBAGGER candidates that are simultaneously OVERPRICED', () => {
     const result = computeQuality(
-      input({ roce: 28, roe: 22, salesYoy: 35, profitYoy: 25, cfoPat: 0.8, debtToAssets: 0.15, piotroski: 8, intrinsic: 100, marginOfSafety: -70 }),
+      input({ roce: 28, roe: 22, salesYoy: 35, profitYoy: 25, cfoPat: 0.8, debtToAssets: 0.15, piotroski: 8, intrinsic: 100, overvaluation: 70 }),
     )
     expect(result.primary.label).not.toBe('MULTIBAGGER')
     expect(result.risks.some((risk) => risk.kind === 'overpriced')).toBe(true)

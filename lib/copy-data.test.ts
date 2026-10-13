@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCopyMarkdown } from './copy-data'
-import { computeIntrinsicValue, marginOfSafety } from './intrinsic'
 import { parsePeers, parseScreenerDetail } from './scrapers/screener-detail'
-import { buildStockView, formatInr, formatPct } from './stock-detail'
+import { buildStockView, formatInr, formatNum, formatPct } from './stock-detail'
 
 const HTML = `<!doctype html><html><body>
 <div id="company-info" data-company-id="2726" data-warehouse-id="WARE1"></div>
@@ -102,7 +101,8 @@ function buildView() {
 }
 
 describe('buildCopyMarkdown', () => {
-  const markdown = buildCopyMarkdown(buildView())
+  const view = buildView()
+  const markdown = buildCopyMarkdown(view)
 
   it('starts with the canonical company line, source and IST fetch time', () => {
     expect(markdown).toContain('# TBZ Ltd (TBZ)')
@@ -111,18 +111,17 @@ describe('buildCopyMarkdown', () => {
   })
 
   it('uses the SAME valuation functions as the UI (no copy/paste drift)', () => {
-    const iv = computeIntrinsicValue({ eps: 35, bookValue: 127, sales: [900, 1100], roce: [20, 22] }).intrinsicValue
-    expect(iv).not.toBeNull()
-    expect(markdown).toContain(`Intrinsic Value: ${formatInr(iv, 0)}`)
-    expect(markdown).toContain(`Margin of Safety: ${formatPct(marginOfSafety(625, iv))}`)
-    expect(markdown).toContain(`Upside / Downside: ${formatPct(((iv as number) - 625) / 625 * 100)}`)
+    expect(view.valuation.intrinsic).not.toBeNull()
+    expect(markdown).toContain(`Intrinsic Value (${view.valuation.method}): ${formatInr(view.valuation.intrinsic, 0)}`)
+    expect(markdown).toContain(`Margin of Safety: ${formatPct(view.valuation.marginOfSafety)}`)
+    expect(markdown).toContain(`Upside / Downside: ${formatPct(view.valuation.upside)}`)
   })
 
   it('documents the valuation method, inputs and calculation date', () => {
-    expect(markdown).toContain('IV = √(EPS × BV × maxP/E × maxP/BV)')
+    expect(markdown).toContain('blended Graham + growth fair value')
     expect(markdown).toContain('Calculation date:')
-    expect(markdown).toContain('Median Sales Growth (5Y, input)')
-    expect(markdown).toContain('Max P/BV (intermediate)')
+    expect(markdown).toContain(`Fair P/E (min(8.5 + 2 × growth, 38.5), no-growth floor 11): ${formatNum(view.valuation.fairPe, 1)}`)
+    expect(markdown).toContain('Graham Number')
   })
 
   it('reports a documented partial Piotroski when current-ratio is unavailable', () => {

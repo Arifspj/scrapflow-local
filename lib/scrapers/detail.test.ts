@@ -89,12 +89,27 @@ describe('parseScreenerDetail', () => {
 describe('stock-detail helpers', () => {
   it('computes valuation, score and growth', () => {
     expect(deriveScore(21.6, 27.1)).toBe(24)
-    const valuation = deriveValuation({ price: 625, eps: 30.32, bookValue: 126, sales: [2620, 3203], roce: [22] })
+    const valuation = deriveValuation({
+      price: 625,
+      pe: 625 / 30.32,
+      bookValue: 126,
+      eps: 30.32,
+      profitSeries: [100, 120],
+      ebit: 200,
+      otherIncome: 0,
+      profitBeforeTax: 180,
+      cfo: 160,
+      cfoPat3y: 1.2,
+      debt: 250,
+      shares: 50,
+    })
+    expect(valuation.eps).toBeCloseTo(30.32, 2)
+    expect(valuation.growthRate).toBe(15)
+    expect(valuation.fairPe).toBeCloseTo(38.5, 1)
     expect(valuation.graham).toBeCloseTo(Math.sqrt(22.5 * 30.32 * 126), 1)
-    expect(valuation.maxPe).toBeCloseTo(33.38, 1)
-    expect(valuation.maxPbv).toBeCloseTo(2.75, 2)
-    expect(valuation.intrinsic).toBeCloseTo(592.1, 0)
-    expect(valuation.marginOfSafety).toBeLessThan(0)
+    expect(valuation.intrinsic).toBeCloseTo(730.3, 0)
+    expect(valuation.method).toBe('blended')
+    expect(valuation.marginOfSafety).toBeGreaterThan(0)
     expect(yoyPercent([2620, 3203])).toBeCloseTo(22.25, 1)
   })
 

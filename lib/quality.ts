@@ -43,8 +43,10 @@ export type QualityInput = {
   piotroski: number | null
   pe: number | null
   netProfit: number | null
-  /** Latest reported PAT, used to keep the CASH TRAP flag honest. */
-  marginOfSafety: number | null
+  /** Premium % above fair value; null when the price is at/below fair value. */
+  overvaluation: number | null
+  /** True when the fair value is below ₹1 (equity wiped out by debt). */
+  noEquity: boolean
   upside: number | null
   intrinsic: number | null
   qoqSalesPct: number | null
@@ -57,7 +59,7 @@ export const QUALITY_THRESHOLDS = {
   compounder: { roce: 20, roe: 18, profitYoy: 15, cfoPat: 0.5, debtToAssets: 0.3, piotroski: 6 },
   value: { pe: 15, roce: 15, debtToEquity: 1.0, debtToAssets: 0.35 },
   highLeverage: 0.7,
-  overpricedMarginOfSafetyPct: -50,
+  overpricedPremiumPct: 30,
 } as const
 
 type Check = { criteria: string; pass: boolean }
@@ -128,16 +130,17 @@ export function computeQuality(input: QualityInput): QualityResult {
     })
   }
 
-  if (
-    input.intrinsic != null &&
-    input.intrinsic > 0 &&
-    input.marginOfSafety != null &&
-    input.marginOfSafety <= QUALITY_THRESHOLDS.overpricedMarginOfSafetyPct
-  ) {
+  if (input.noEquity) {
     risks.push({
       kind: 'overpriced',
       label: 'OVERPRICED',
-      reasons: [`Price is ≥ 50% above the calculated intrinsic value (MoS = ${input.marginOfSafety.toFixed(1)}%)`],
+      reasons: ['Fair value is below ₹1 — debt wipes out the equity value'],
+    })
+  } else if (input.overvaluation != null && input.overvaluation > QUALITY_THRESHOLDS.overpricedPremiumPct) {
+    risks.push({
+      kind: 'overpriced',
+      label: 'OVERPRICED',
+      reasons: [`Price is ${input.overvaluation.toFixed(0)}% above the calculated fair value`],
     })
   }
 
