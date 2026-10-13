@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPublicSnapshot, scannerCategories } from '@/lib/public-data'
@@ -8,6 +9,7 @@ import { rateLimited, scrapeScreenerCompany } from '@/lib/scrapers/resolve'
 import { AutoRefresh } from './auto-refresh'
 import { ScannerSelect } from './scanner-select'
 import { ScannerTable } from './scanner-table'
+import { OpportunityDashboard } from './opportunity-dashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,27 +83,32 @@ export default async function HomePage({ searchParams }: Props) {
 
       <div className="mx-auto max-w-[1720px] space-y-4 px-4 py-4">
         {!hasScanner ? (
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-white">Choose your scanner</h2>
-                <p className="mt-1 text-xs text-slate-500">Pick a market idea to open its scanner page.</p>
+          <>
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-white">Choose your scanner</h2>
+                  <p className="mt-1 text-xs text-slate-500">Pick a market idea to open its scanner page.</p>
+                </div>
+                <span className="text-[13px] text-slate-500">{scannerCategories.length} scanners</span>
               </div>
-              <span className="text-[13px] text-slate-500">{scannerCategories.length} scanners</span>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {scannerCategories.map(([name, text]) => (
-                <Link key={name} href={`/?scanner=${encodeURIComponent(name)}`} className="group flex flex-col justify-between rounded-xl border border-[#162844] bg-[#091527] p-4 transition hover:border-sky-500/60 hover:bg-[#0d1a2e]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
-                    <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
-                  </div>
-                  <h3 className="mt-3 text-sm font-semibold text-white group-hover:text-sky-300">{name}</h3>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-500">{text}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {scannerCategories.map(([name, text]) => (
+                  <Link key={name} href={`/?scanner=${encodeURIComponent(name)}`} className="group flex flex-col justify-between rounded-xl border border-[#162844] bg-[#091527] p-4 transition hover:border-sky-500/60 hover:bg-[#0d1a2e]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
+                      <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
+                    </div>
+                    <h3 className="mt-3 text-sm font-semibold text-white group-hover:text-sky-300">{name}</h3>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{text}</p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+            <Suspense fallback={<DashboardSkeleton />}>
+              <OpportunityDashboard />
+            </Suspense>
+          </>
         ) : (
           <>
             <section className="grid items-end gap-4 lg:grid-cols-12">
@@ -140,6 +147,20 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-[13px] text-slate-500">{label}</p>
       <p className="mt-2 truncate text-base font-bold text-white">{value}</p>
     </div>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <section className="space-y-3">
+      <div className="h-6 w-56 animate-pulse rounded bg-white/5" />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-16 animate-pulse rounded-xl border border-[#152742] bg-[#091527]" />
+        ))}
+      </div>
+      <div className="h-64 animate-pulse rounded-xl border border-[#162844] bg-[#091527]" />
+    </section>
   )
 }
 

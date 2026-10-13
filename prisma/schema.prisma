@@ -88,8 +88,36 @@ model Stock {
   updatedAt   DateTime                  @updatedAt
   scanners    ScannerStock[]
   fundamentals StockFundamentalSnapshot[]
+  metricHistory StockMetricHistory[]
 
   @@index([companyName])
+}
+
+/// A lightweight, append-only record of a stock's derived metrics on each scrape.
+/// The full `StockFundamentalSnapshot` is replaced on refresh (to avoid storing a
+/// giant `rawData` JSON per run), so this small row is what makes genuine
+/// change-over-time possible: score / ROCE / growth movement across runs.
+model StockMetricHistory {
+  id                  String   @id @default(cuid())
+  stockId             String
+  capturedAt          DateTime @default(now())
+  score               Int?
+  coveragePct         Int?
+  opportunityScore    Int?
+  opportunityCoverage Int?
+  roce                Decimal? @db.Decimal(12, 4)
+  roe                 Decimal? @db.Decimal(12, 4)
+  pe                  Decimal? @db.Decimal(12, 4)
+  salesYoy            Decimal? @db.Decimal(12, 4)
+  profitYoy           Decimal? @db.Decimal(12, 4)
+  cfoPat              Decimal? @db.Decimal(12, 4)
+  debtToEquity        Decimal? @db.Decimal(12, 4)
+  intrinsic           Decimal? @db.Decimal(20, 2)
+  marginOfSafety      Decimal? @db.Decimal(12, 4)
+  stock               Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, capturedAt])
+  @@index([capturedAt])
 }
 
 model ScannerStock {

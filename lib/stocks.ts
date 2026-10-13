@@ -2,7 +2,8 @@ import { Prisma } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { cleanSymbol } from '@/lib/scrapers/screener'
-import { isScreenerDetail } from '@/lib/stock-detail'
+import { buildStockView, isScreenerDetail } from '@/lib/stock-detail'
+import { recordMetricHistory } from '@/lib/metric-history'
 import { rateLimited, scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
 
 export type StockSearchHit = {
@@ -45,7 +46,7 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
 
   const f = company.fundamentals ?? {}
   await prisma.stockFundamentalSnapshot.deleteMany({ where: { stockId: stock.id } })
-  await prisma.stockFundamentalSnapshot.create({
+  const snapshot = await prisma.stockFundamentalSnapshot.create({
     data: {
       stockId: stock.id,
       marketCap: toDecimal(f.marketCap),
@@ -66,6 +67,14 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
       parserVersion: company.parserVersion,
     },
   })
+
+  // Append the small change-tracking row. A history failure must never break the
+  // import itself, so it is isolated and only logged.
+  try {
+    await recordMetricHistory(stock.id, buildStockView(stock, snapshot))
+  } catch (error) {
+    console.error(`[stocks] failed to record metric history for ${stock.symbol}`, error)
+  }
 
   return { symbol: stock.symbol, companyName: stock.companyName }
 }
