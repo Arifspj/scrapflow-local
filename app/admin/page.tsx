@@ -149,6 +149,7 @@ export default function AdminPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [addUrl, setAddUrl] = useState('')
   const [addMode, setAddMode] = useState<'LIST_ONLY' | 'LIST_AND_FUNDAMENTALS'>('LIST_ONLY')
+  const [addPending, setAddPending] = useState<string | null>(null)
   const [scannerModal, setScannerModal] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
   const [scannerForm, setScannerForm] = useState({ name: '', category: 'Custom', description: '', urls: '', enabled: true })
   const [promptModal, setPromptModal] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
@@ -234,21 +235,31 @@ export default function AdminPage() {
 
   async function addSource() {
     if (!selected || !addUrl.trim()) return
+    const scannerId = selected.id
+    const scannerName = selected.name
+    const url = addUrl.trim()
+    const mode = addMode
+    // Close the dialog immediately so it can never appear stuck: the request
+    // runs in the background and its progress is shown on the sources list.
+    setShowAdd(false)
+    setAddUrl('')
+    setAddPending(url)
     setBusy('add')
     setNotice('')
     try {
       const response = await api('/api/admin/sources', {
         method: 'POST',
-        body: JSON.stringify({ scannerId: selected.id, url: addUrl.trim(), pipelineMode: addMode }),
+        body: JSON.stringify({ scannerId, url, pipelineMode: mode }),
       })
-      const json = await response.json()
+      const json = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(json.error || 'Could not add source.')
-      setShowAdd(false)
-      setAddUrl('')
-      setNotice(`Added ${preview?.kindLabel ?? 'source'} to ${selected.name}.`)
+      setNotice(`Added ${json.source?.kindLabel ?? 'source'} to ${scannerName}.`)
       await load()
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : 'Failed to add source.')
+    } finally {
+      setBusy(null)
+      setAddPending(null)
     }
   }
 
@@ -610,7 +621,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="overflow-x-auto p-4">
-                      {selected.sources.length ? (
+                      {selected.sources.length || addPending ? (
                         <table className="w-full min-w-[865px] text-left text-xs">
                           <thead className="text-[12px] uppercase tracking-wider text-slate-600">
                             <tr>
@@ -622,6 +633,20 @@ export default function AdminPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/[0.06]">
+                            {addPending && (
+                              <tr className="align-top">
+                                <td className="max-w-[280px] py-3">
+                                  <span className="block truncate text-slate-400" title={addPending}>{addPending}</span>
+                                  <span className="mt-0.5 flex items-center gap-1 text-[12px] text-sky-300">
+                                    <Loader2 className="size-3 animate-spin" /> Adding source…
+                                  </span>
+                                </td>
+                                <td className="py-3 text-slate-600">—</td>
+                                <td className="py-3 text-slate-600">—</td>
+                                <td className="py-3 text-slate-600">—</td>
+                                <td className="py-3 text-right text-[12px] text-sky-300">pending</td>
+                              </tr>
+                            )}
                             {selected.sources.map((source) => (
                               <tr key={source.id} className="align-top">
                                 <td className="max-w-[280px] py-3">
