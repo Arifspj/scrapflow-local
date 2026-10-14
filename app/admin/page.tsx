@@ -683,7 +683,7 @@ export default function AdminPage() {
                           </tbody>
                         </table>
                       ) : (
-                        <p className="py-4 text-xs text-slate-600">No source links yet. Add a screener.in screen/market link or a Chartink scan.</p>
+                        <p className="py-4 text-xs text-slate-600">No source links yet. Add a screener.in screen/market/results link or a Chartink scan.</p>
                       )}
                     </div>
 
@@ -921,7 +921,7 @@ export default function AdminPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="font-semibold text-white">Add source link</h2>
-                <p className="mt-1 text-xs text-slate-500">Attach a screener.in or Chartink URL to “{selected.name}”.</p>
+                <p className="mt-1 text-xs text-slate-500">Attach a screener.in (screen, market, IPO, latest-results) or Chartink URL to “{selected.name}”.</p>
               </div>
               <button onClick={() => setShowAdd(false)} className="rounded-lg p-1 text-slate-500" aria-label="Close"><X className="size-4" /></button>
             </div>

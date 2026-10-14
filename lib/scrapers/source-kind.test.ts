@@ -16,6 +16,13 @@ describe('kindFromUrl', () => {
     expect(kindFromUrl('https://www.screener.in/company/RELIANCE/')).toBe('screener-company')
   })
 
+  it('detects the latest-results listing whatever the query string', () => {
+    expect(kindFromUrl('https://www.screener.in/results/latest/')).toBe('screener-results')
+    expect(kindFromUrl('https://www.screener.in/results/latest/?')).toBe('screener-results')
+    expect(kindFromUrl('https://www.screener.in/results/latest/?p=1&sme=bse')).toBe('screener-results')
+    expect(kindFromUrl('https://www.screener.in/results/')).toBe('screener-results')
+  })
+
   it('detects chartink and ignores unrelated hosts', () => {
     expect(kindFromUrl('https://chartink.com/screener/foo')).toBe('chartink-scan')
     expect(kindFromUrl('https://example.com/screens/1/')).toBeNull()

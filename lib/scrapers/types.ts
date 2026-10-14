@@ -1,4 +1,10 @@
-export type SourceKind = 'chartink-scan' | 'screener-screen' | 'screener-market' | 'screener-ipo' | 'screener-company'
+export type SourceKind =
+  | 'chartink-scan'
+  | 'screener-screen'
+  | 'screener-market'
+  | 'screener-ipo'
+  | 'screener-company'
+  | 'screener-results'
 
 export type ParsedFundamental = {
   currentPrice?: number
@@ -33,6 +39,7 @@ const LABEL_TO_KIND: Record<string, SourceKind> = {
   'Screener market category': 'screener-market',
   'Screener IPO listing': 'screener-ipo',
   'Screener company page': 'screener-company',
+  'Screener latest results': 'screener-results',
 }
 
 export const KIND_TO_LABEL: Record<SourceKind, string> = {
@@ -41,6 +48,7 @@ export const KIND_TO_LABEL: Record<SourceKind, string> = {
   'screener-market': 'Screener market category',
   'screener-ipo': 'Screener IPO listing',
   'screener-company': 'Screener company page',
+  'screener-results': 'Screener latest results',
 }
 
 export function sourceKindFromLabel(label: string): SourceKind | null {
@@ -67,6 +75,7 @@ export function kindFromUrl(rawUrl: string): SourceKind | null {
   if (host === 'screener.in') {
     const path = url.pathname
     if (/^\/market(\/|$)/i.test(path)) return 'screener-market'
+    if (/^\/results(\/|$)/i.test(path)) return 'screener-results'
     if (/^\/ipo(\/|$)/i.test(path)) return 'screener-ipo'
     if (/^\/screens\//i.test(path)) return 'screener-screen'
     if (/^\/company\//i.test(path)) return 'screener-company'

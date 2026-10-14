@@ -5,8 +5,10 @@ import { KIND_TO_LABEL, kindFromUrl, type ParsedSymbol, type SourceKind } from '
 import { collectMarketCategory, type MarketImportReport } from '@/lib/market-collect'
 import { collectScreenerScreen, type ScreenImportStatus } from '@/lib/screen-collect'
 import { collectScreenerIpo, type IpoImportStatus } from '@/lib/ipo-collect'
+import { collectScreenerResults, type ResultsImportStatus } from '@/lib/results-collect'
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import type { IpoMetrics } from '@/lib/scrapers/screener-ipo'
+import { SCREENER_RESULTS_PARSER_VERSION } from '@/lib/scrapers/screener-results'
 import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
 import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
@@ -106,7 +108,7 @@ function previewMessage(
 export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   const kind = kindFromUrl(rawUrl)
   if (!kind) {
-    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /ipo, /market or /company page, or a chartink.com scan.' }
+    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /ipo, /market, /results or /company page, or a chartink.com scan.' }
   }
 
   // Public screens are paginated, so preview every page (bounded) the same way
@@ -142,6 +144,29 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
       rows,
       warnings: report.warnings,
       message: previewMessage('Parsed', ipoRows.length, 'IPO symbol', report),
+    }
+  }
+
+  // Latest-results listings are paginated and login-gated; preview every page
+  // (bounded) exactly like the import will, keeping only all-green companies.
+  if (kind === 'screener-results') {
+    const { symbols, report } = await collectScreenerResults(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: listPageLimit(), delayMs: 120 })
+    const rows = symbols.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+    const scanned = report.rowsParsed
+    return {
+      ok: symbols.length > 0,
+      kind,
+      kindLabel: KIND_TO_LABEL[kind],
+      status: report.pagesFetched > 0 ? 200 : 0,
+      stopped: false,
+      symbolCount: symbols.length,
+      rows,
+      warnings: report.warnings,
+      message: symbols.length
+        ? `Parsed ${symbols.length} all-green QoQ symbol(s) of ${scanned} scanned across ${report.pagesFetched} page(s); nothing was saved.`
+        : report.pagesFetched > 0
+          ? `No all-green quarterly results found in ${scanned} scanned row(s).`
+          : 'Source returned no parseable HTML.',
     }
   }
 
@@ -253,7 +278,7 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
   return { created, updated, memberships }
 }
 
-function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImportStatus | IpoImportStatus): FetchRunStatus {
+function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImportStatus | IpoImportStatus | ResultsImportStatus): FetchRunStatus {
   if (status === 'complete') return 'SUCCEEDED'
   if (status === 'failed') return 'FAILED'
   return 'PARTIAL'
@@ -488,6 +513,39 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
       } else {
         status = 'FAILED'
         errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the IPO listing.'
+      }
+    } else if (kind === 'screener-results') {
+      const { symbols, report } = await collectScreenerResults(source.url, async (url) => (await screenerFetchPolite(url)).html, {
+        maxPages: listMaxPages,
+        delayMs: 150,
+      })
+      Object.assign(diagnostics, { report })
+      warnings.push(...report.warnings)
+      found = symbols.length
+
+      if (symbols.length) {
+        const resultItems = await resolveNumericMembers(
+          symbols.map((symbol) => ({ symbol: symbol.symbol, companyName: symbol.companyName })),
+          warnings,
+          MAX_NUMERIC_LOOKUPS,
+        )
+        const persisted = await persistItems(scannerId, source.id, resultItems)
+        created = persisted.created
+        updated = persisted.updated
+        memberships = persisted.memberships
+        status = reportStatusToFetchRun(report.status)
+        parserVersion = SCREENER_RESULTS_PARSER_VERSION
+        if (status === 'FAILED') errorSummary = 'No pages could be fetched from the results listing.'
+
+        if (persisted.memberships) {
+          const enrichResult = await enrichMembers(resultItems.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
+          enriched = enrichResult.enriched
+          diagnostics.enrichSkipped = enrichResult.skipped
+          diagnostics.enrichPending = enrichResult.pending
+        }
+      } else {
+        status = 'FAILED'
+        errorSummary = report.pagesFetched > 0 ? 'No all-green quarterly results were parsed from this source.' : 'No pages could be fetched from the results listing.'
       }
     } else if (kind === 'chartink-scan') {
       const result = await fetchChartinkScan(source.url)
