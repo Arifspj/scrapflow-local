@@ -13,6 +13,40 @@ export const scannerCategories = [
   ['Watchlist', 'Curated symbols for manual review.'],
 ] as const
 
+const CANONICAL_DESCRIPTIONS = new Map<string, string>(scannerCategories.map(([name, text]) => [name, text]))
+const CANONICAL_ORDER = new Map<string, number>(scannerCategories.map(([name], index) => [name, index]))
+
+export type PublicScannerOption = { name: string; description: string }
+
+/**
+ * Every enabled scanner, straight from the DB, so a scanner created or renamed
+ * in the admin panel shows up on the public site without a code change. The nine
+ * canonical scanners keep their curated order at the front; anything custom
+ * (e.g. a results adapter) is appended after them. Falls back to the static list
+ * only when no scanner row exists yet.
+ */
+export async function listPublicScanners(): Promise<PublicScannerOption[]> {
+  const scanners = await prisma.scanner.findMany({
+    where: { enabled: true },
+    select: { name: true, description: true },
+  })
+  if (scanners.length === 0) return scannerCategories.map(([name, text]) => ({ name, description: text }))
+
+  return scanners
+    .map((scanner) => ({
+      name: scanner.name,
+      description: scanner.description?.trim() || CANONICAL_DESCRIPTIONS.get(scanner.name) || 'Source-backed screen.',
+    }))
+    .sort((a, b) => {
+      const ai = CANONICAL_ORDER.get(a.name)
+      const bi = CANONICAL_ORDER.get(b.name)
+      if (ai != null && bi != null) return ai - bi
+      if (ai != null) return -1
+      if (bi != null) return 1
+      return a.name.localeCompare(b.name)
+    })
+}
+
 export function decimal(value: unknown) {
   return value == null ? null : Number(value)
 }

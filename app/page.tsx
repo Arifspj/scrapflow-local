@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getPublicSnapshot, scannerCategories } from '@/lib/public-data'
+import { getPublicSnapshot, listPublicScanners } from '@/lib/public-data'
 import { buildStockView } from '@/lib/stock-detail'
 import { findStocksByQuery, upsertStockFromScrape } from '@/lib/stocks'
 import { rateLimited, scrapeScreenerCompany } from '@/lib/scrapers/resolve'
@@ -42,6 +42,7 @@ export default async function HomePage({ searchParams }: Props) {
   }
 
   const data = await getPublicSnapshot(params.scanner, query)
+  const scanners = await listPublicScanners()
   const scanner = data.scanner
   const rows = data.rows.map((row) => {
     const view = buildStockView(row.stock, row.stock.fundamentals[0])
@@ -91,17 +92,17 @@ export default async function HomePage({ searchParams }: Props) {
                   <h2 className="text-lg font-bold tracking-tight text-white">Choose your scanner</h2>
                   <p className="mt-1 text-xs text-slate-500">Pick a market idea to open its scanner page.</p>
                 </div>
-                <span className="text-[13px] text-slate-500">{scannerCategories.length} scanners</span>
+                <span className="text-[13px] text-slate-500">{scanners.length} scanners</span>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {scannerCategories.map(([name, text]) => (
+                {scanners.map(({ name, description }) => (
                   <Link key={name} href={`/?scanner=${encodeURIComponent(name)}`} className="group flex flex-col justify-between rounded-xl border border-[#162844] bg-[#091527] p-4 transition hover:border-sky-500/60 hover:bg-[#0d1a2e]">
                     <div className="flex items-center justify-between">
                       <span className="text-[12px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
                       <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
                     </div>
                     <h3 className="mt-3 text-sm font-semibold text-white group-hover:text-sky-300">{name}</h3>
-                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{text}</p>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p>
                   </Link>
                 ))}
               </div>
@@ -115,7 +116,7 @@ export default async function HomePage({ searchParams }: Props) {
             <section className="grid items-end gap-4 lg:grid-cols-12">
               <div className="lg:col-span-4">
                 <p className="text-xs font-semibold uppercase tracking-[.2em] text-sky-400">{scanner?.category || 'Public scanner'}</p>
-                <ScannerSelect scanners={scannerCategories} value={scanner?.name ?? scannerCategories[0][0]} variant="hero" />
+                <ScannerSelect scanners={scanners} value={scanner?.name ?? scanners[0]?.name ?? ''} variant="hero" />
                 <p className="mt-1 text-xs text-slate-500">{scanner?.description || 'Import source-backed records from the admin panel to populate this view.'}</p>
               </div>
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:col-span-8">

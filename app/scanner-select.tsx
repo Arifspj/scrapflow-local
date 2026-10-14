@@ -1,18 +1,19 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import type { PublicScannerOption } from '@/lib/public-data'
 
 export function ScannerSelect({
   scanners,
   value,
   variant = 'inline',
 }: {
-  scanners: readonly (readonly [string, string])[]
+  scanners: readonly PublicScannerOption[]
   value: string
   variant?: 'inline' | 'hero'
 }) {
   const router = useRouter()
-  const options = scanners.map(([name]) => (
+  const options = scanners.map(({ name }) => (
     <option key={name} value={name}>
       {name}
     </option>
