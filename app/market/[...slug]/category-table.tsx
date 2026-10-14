@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { scoreBand, scoreColor } from '@/lib/score'
 import type { CategoryStockRow } from '@/lib/category'
 import { DEFAULT_PAGE_SIZE } from '@/lib/paging'
 import { Pagination, usePagination } from '@/app/pagination'
+import { useSessionState } from '@/app/use-session-state'
 
 type SortKey = 'companyName' | 'price' | 'pe' | 'roce' | 'roe' | 'debtToEquity' | 'salesYoy' | 'marketCap' | 'score'
 type FilterKey = SortKey | 'badge'
@@ -91,10 +92,11 @@ function parseNumericQuery(raw: string): ((value: number | null) => boolean) | n
 }
 
 export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[]; contextSlug?: string }) {
-  const [sortKey, setSortKey] = useState<SortKey>('marketCap')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [filters, setFilters] = useState<Partial<Record<FilterKey, string>>>({})
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const storagePrefix = `qscan:category-table:${contextSlug ?? 'root'}`
+  const [sortKey, setSortKey] = useSessionState<SortKey>(`${storagePrefix}:sortKey`, 'marketCap')
+  const [sortDir, setSortDir] = useSessionState<'asc' | 'desc'>(`${storagePrefix}:sortDir`, 'desc')
+  const [filters, setFilters] = useSessionState<Partial<Record<FilterKey, string>>>(`${storagePrefix}:filters`, {})
+  const [pageSize, setPageSize] = useSessionState<number>(`${storagePrefix}:pageSize`, DEFAULT_PAGE_SIZE)
 
   const badgeOptions = useMemo(() => {
     const set = new Set<string>()

@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { DEFAULT_PAGE_SIZE } from '@/lib/paging'
 import { Pagination, usePagination } from './pagination'
+import { useSessionState } from './use-session-state'
 
 export type ScannerRow = {
   id: string
@@ -88,10 +89,11 @@ function parseNumericQuery(raw: string): ((value: number | null) => boolean) | n
 }
 
 export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerId?: string }) {
-  const [sortKey, setSortKey] = useState<Key>('score')
-  const [asc, setAsc] = useState(false)
-  const [filters, setFilters] = useState<Partial<Record<Key, string>>>({})
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const storagePrefix = `qscan:scanner-table:${scannerId ?? 'default'}`
+  const [sortKey, setSortKey] = useSessionState<Key>(`${storagePrefix}:sortKey`, 'score')
+  const [asc, setAsc] = useSessionState<boolean>(`${storagePrefix}:asc`, false)
+  const [filters, setFilters] = useSessionState<Partial<Record<Key, string>>>(`${storagePrefix}:filters`, {})
+  const [pageSize, setPageSize] = useSessionState<number>(`${storagePrefix}:pageSize`, DEFAULT_PAGE_SIZE)
 
   const stockHref = (symbol: string) =>
     `/stocks/${encodeURIComponent(symbol)}${scannerId ? `?scanner=${encodeURIComponent(scannerId)}` : ''}`
