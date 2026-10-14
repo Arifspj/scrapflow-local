@@ -311,14 +311,14 @@ function PeerComparison({ view }: { view: StockView }) {
           {bestRoce && (
             <span className="text-slate-400">
               Best ROCE:{' '}
-              <span className="font-bold text-emerald-300">{bestRoce.name}</span>{' '}
+              <span className="font-bold text-emerald-300">{peerSymbolLink(bestRoce, bestRoce.name)}</span>{' '}
               <span className="font-mono text-emerald-400">{formatPct(bestRoce.roce)}</span>
             </span>
           )}
           {topPick && (
             <span className="text-slate-400" title={topPickReasons.length ? `Rule-based blend — ${topPickReasons.join(' · ')}` : undefined}>
               Top Pick:{' '}
-              <span className="font-bold text-amber-300">{topPick.name}</span>
+              <span className="font-bold text-amber-300">{peerSymbolLink(topPick, topPick.name)}</span>
               {topPickScore != null && <span className="font-mono text-amber-400/80"> {topPickScore.toFixed(0)}</span>}
             </span>
           )}

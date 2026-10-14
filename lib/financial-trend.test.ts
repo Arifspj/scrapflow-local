@@ -28,7 +28,17 @@ describe('classifyLabel', () => {
     expect(classifyLabel('OPM %')).toEqual({ category: 'growth', direction: 'higher-better' })
     expect(classifyLabel('Expenses')).toEqual({ category: 'expense', direction: 'lower-better' })
     expect(classifyLabel('Interest')).toEqual({ category: 'interest', direction: 'lower-better' })
-    expect(classifyLabel('Total Assets')).toEqual({ category: 'unknown', direction: 'higher-better' })
+  })
+
+  it('judges balance-sheet rows with an investing direction', () => {
+    expect(classifyLabel('Reserves')).toEqual({ category: 'balance', direction: 'higher-better' })
+    expect(classifyLabel('Total Assets')).toEqual({ category: 'balance', direction: 'higher-better' })
+    expect(classifyLabel('Investments')).toEqual({ category: 'balance', direction: 'higher-better' })
+    expect(classifyLabel('Borrowings')).toEqual({ category: 'balance', direction: 'lower-better' })
+    expect(classifyLabel('Other Liabilities')).toEqual({ category: 'balance', direction: 'lower-better' })
+    // Ambiguous rows stay uncoloured rather than guess.
+    expect(classifyLabel('Equity Capital')).toEqual({ category: 'unknown', direction: 'higher-better' })
+    expect(classifyLabel('CWIP')).toEqual({ category: 'unknown', direction: 'higher-better' })
   })
 })
 
@@ -40,6 +50,27 @@ describe('financialCellTrend', () => {
     expect(financialCellTrend(QUARTERS, sales, lastIndex).tone).toBe('good')
     expect(financialCellTrend(QUARTERS, profit, lastIndex).tone).toBe('good')
     expect(financialCellTrend(QUARTERS, opm, lastIndex).tone).toBe('good')
+  })
+
+  it('colours balance-sheet rows with an investing direction', () => {
+    const t = table(
+      ['Mar 2025', 'Mar 2026'],
+      [
+        ['Reserves', ['500', '766']], // up -> good
+        ['Borrowings', ['33', '261']], // up -> bad
+        ['Total Assets', ['1,000', '900']], // down -> bad
+        ['Equity Capital', ['20', '40']], // ambiguous -> never coloured
+      ],
+    )
+    expect(financialCellTrend(t, t.rows[0], 1).tone).toBe('good')
+    expect(financialCellTrend(t, t.rows[1], 1).tone).toBe('bad')
+    expect(financialCellTrend(t, t.rows[2], 1).tone).toBe('bad')
+    expect(financialCellTrend(t, t.rows[3], 1).tone).toBe('neutral')
+  })
+
+  it('greens falling borrowings (deleveraging)', () => {
+    const t = table(['Mar 2025', 'Mar 2026'], [['Borrowings', ['100', '60']]])
+    expect(financialCellTrend(t, t.rows[0], 1).tone).toBe('good')
   })
 
   it('is red when sales decline meaningfully', () => {
