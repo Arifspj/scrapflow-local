@@ -8,14 +8,29 @@ import { buildFlags, type StockFlag } from '@/lib/stock-flags'
 import { assessTurnaround, type TurnaroundAssessment } from '@/lib/turnaround'
 import { ownershipTrend, type OwnershipTrend } from '@/lib/ownership'
 import { summarizeSectors, type SectorInput, type SectorSummary } from '@/lib/sector-map'
+import {
+  ageOfOpportunityCache,
+  getInflightOpportunity,
+  invalidateOpportunityCache,
+  readLatestOpportunityCache,
+  readOpportunityCache,
+  setInflightOpportunity,
+  writeOpportunityCache,
+} from '@/lib/opportunity-cache'
 
 /**
  * Server data layer for the "Early Opportunity" dashboard.
  *
- * Computing the model for every saved stock decodes a large `rawData` JSON blob
- * per row, which is too heavy to repeat on every request. The result is
- * therefore memoised per server instance for a few minutes; the underlying
- * source data only changes a few times a day anyway.
+ * Every section is derived from the database on demand — nothing is hardcoded
+ * and opening the homepage never triggers an import. Computing the model for
+ * every saved stock decodes a large `rawData` JSON blob per row, which is too
+ * heavy to repeat on every request, so the result is memoised.
+ *
+ * The memo is keyed on `dashboardSignature()` — a cheap query for row counts and
+ * the newest timestamps. When the underlying rows change (a stock or snapshot is
+ * inserted/updated) the signature changes and the dashboard rebuilds on the next
+ * read, in every serverless instance, without a manual import. `OPPORTUNITY_CACHE_TTL_MS`
+ * is only a safety net for the rare case where the signature query itself fails.
  */
 
 export const OPPORTUNITY_CACHE_TTL_MS = 5 * 60 * 1000
@@ -297,25 +312,61 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
   }
 }
 
-let cache: { at: number; data: OpportunityDashboard } | null = null
-let inflight: Promise<OpportunityDashboard> | null = null
-
-export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
-  if (cache && Date.now() - cache.at < OPPORTUNITY_CACHE_TTL_MS) return cache.data
-  if (inflight) return inflight
-  inflight = buildDashboard()
-    .then((data) => {
-      cache = { at: Date.now(), data }
-      return data
-    })
-    .finally(() => {
-      inflight = null
-    })
-  return inflight
+/**
+ * Cheap fingerprint of the rows the dashboard is built from. Row counts plus the
+ * newest timestamps are enough to notice an inserted/updated stock or snapshot,
+ * so it is a handful of aggregates instead of the full per-row decode.
+ */
+async function dashboardSignature(): Promise<string> {
+  const [stocks, snapshots, scanners] = await Promise.all([
+    prisma.stock.aggregate({ _count: { _all: true }, _max: { updatedAt: true } }),
+    prisma.stockFundamentalSnapshot.aggregate({ _count: { _all: true }, _max: { capturedAt: true } }),
+    prisma.scanner.count({ where: { enabled: true } }),
+  ])
+  return [
+    stocks._count._all,
+    stocks._max.updatedAt?.getTime() ?? 0,
+    snapshots._count._all,
+    snapshots._max.capturedAt?.getTime() ?? 0,
+    scanners,
+  ].join('|')
 }
 
+export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
+  let signature: string | null = null
+  try {
+    signature = await dashboardSignature()
+  } catch (error) {
+    console.error('[opportunity] signature query failed; falling back to the TTL cache', error)
+  }
+
+  if (signature) {
+    const cached = readOpportunityCache(signature) as OpportunityDashboard | null
+    if (cached) return cached
+  } else {
+    const age = ageOfOpportunityCache()
+    if (age != null && age < OPPORTUNITY_CACHE_TTL_MS) {
+      const cached = readLatestOpportunityCache() as OpportunityDashboard | null
+      if (cached) return cached
+    }
+  }
+
+  const pending = getInflightOpportunity()
+  if (pending) return pending as Promise<OpportunityDashboard>
+
+  const task = buildDashboard()
+    .then((data) => {
+      writeOpportunityCache(signature ?? 'unsignatured', data)
+      return data
+    })
+    .finally(() => setInflightOpportunity(null))
+  setInflightOpportunity(task as Promise<unknown>)
+  return task
+}
+
+/** Drop the memo on this instance; other instances notice through the signature. */
 export function clearOpportunityCache(): void {
-  cache = null
+  invalidateOpportunityCache()
 }
 
 type StockForRow = Prisma.StockGetPayload<{

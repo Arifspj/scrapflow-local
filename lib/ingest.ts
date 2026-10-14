@@ -13,6 +13,7 @@ import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreene
 import { CHARTINK_PARSER_VERSION, fetchChartinkScan } from '@/lib/scrapers/chartink'
 import { isNumericCode, pendingEnrichmentSymbols } from '@/lib/enrich-queue'
 import { upsertStockFromScrape } from '@/lib/stocks'
+import { invalidateOpportunityCache } from '@/lib/opportunity-cache'
 
 /**
  * The generic Admin -> DB ingestion adapter.
@@ -246,6 +247,9 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
     })
     memberships += 1
   }
+  // New stocks / snapshots / memberships were written, so the dashboard memo is
+  // stale. Invalidate locally; other instances notice via the DB signature.
+  if (memberships) invalidateOpportunityCache()
   return { created, updated, memberships }
 }
 

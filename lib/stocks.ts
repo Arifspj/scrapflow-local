@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { cleanSymbol } from '@/lib/scrapers/screener'
 import { buildStockView, isScreenerDetail } from '@/lib/stock-detail'
 import { recordMetricHistory } from '@/lib/metric-history'
+import { invalidateOpportunityCache } from '@/lib/opportunity-cache'
 import { rateLimited, scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
 
 export type StockSearchHit = {
@@ -75,6 +76,9 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
   } catch (error) {
     console.error(`[stocks] failed to record metric history for ${stock.symbol}`, error)
   }
+
+  // The saved snapshot changed, so the dashboard memo on this instance is stale.
+  invalidateOpportunityCache()
 
   return { symbol: stock.symbol, companyName: stock.companyName }
 }
