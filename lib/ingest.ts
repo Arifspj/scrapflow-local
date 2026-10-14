@@ -10,6 +10,7 @@ import type { IpoMetrics } from '@/lib/scrapers/screener-ipo'
 import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
 import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
+import { CHARTINK_PARSER_VERSION, fetchChartinkScan } from '@/lib/scrapers/chartink'
 import { isNumericCode, pendingEnrichmentSymbols } from '@/lib/enrich-queue'
 import { upsertStockFromScrape } from '@/lib/stocks'
 
@@ -57,9 +58,6 @@ export type ImportSummary = {
   message: string
 }
 
-const CHARTINK_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -83,26 +81,7 @@ function decimal(value: number | null | undefined): Prisma.Decimal | null {
   return value == null || !Number.isFinite(value) ? null : new Prisma.Decimal(value)
 }
 
-/** Fetch a non-screener page (Chartink) with a browser UA and a hard timeout. */
-async function plainFetchHtml(url: string): Promise<{ html: string | null; status: number }> {
-  try {
-    const response = await fetch(url, {
-      headers: { 'user-agent': CHARTINK_UA },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(12000),
-    })
-    if (!response.ok) return { html: null, status: response.status }
-    return { html: await response.text(), status: response.status }
-  } catch {
-    return { html: null, status: 0 }
-  }
-}
-
-async function fetchSourceHtml(url: string, kind: SourceKind): Promise<{ html: string | null; status: number; stopped: boolean; reason?: string }> {
-  if (kind === 'chartink-scan') {
-    const { html, status } = await plainFetchHtml(url)
-    return { html, status, stopped: false }
-  }
+async function fetchSourceHtml(url: string): Promise<{ html: string | null; status: number; stopped: boolean; reason?: string }> {
   return screenerFetchPolite(url)
 }
 
@@ -165,7 +144,25 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
     }
   }
 
-  const fetched = await fetchSourceHtml(rawUrl, kind)
+  // Chartink scans are not in the page HTML: the live rows come from the
+  // process endpoint, so preview them through the same fetch the import uses.
+  if (kind === 'chartink-scan') {
+    const result = await fetchChartinkScan(rawUrl)
+    const rows = result.rows.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+    return {
+      ok: result.rows.length > 0,
+      kind,
+      kindLabel: KIND_TO_LABEL[kind],
+      status: result.status,
+      stopped: result.status === 429 || result.status === 403,
+      symbolCount: result.rows.length,
+      rows,
+      warnings: result.warnings,
+      message: result.rows.length ? `Parsed ${result.rows.length} symbol(s); nothing was saved.` : result.warnings[0] ?? 'No rows parsed from this source.',
+    }
+  }
+
+  const fetched = await fetchSourceHtml(rawUrl)
   if (!fetched.html) {
     return {
       ok: false,
@@ -488,8 +485,31 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         status = 'FAILED'
         errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the IPO listing.'
       }
+    } else if (kind === 'chartink-scan') {
+      const result = await fetchChartinkScan(source.url)
+      warnings.push(...result.warnings)
+      parserVersion = CHARTINK_PARSER_VERSION
+      diagnostics.chartinkStatus = result.status
+      found = result.rows.length
+
+      if (result.rows.length) {
+        const items: IngestItem[] = result.rows.map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+        const persisted = await persistItems(scannerId, source.id, items)
+        created = persisted.created
+        updated = persisted.updated
+        memberships = persisted.memberships
+        status = 'SUCCEEDED'
+
+        const enrichResult = await enrichMembers(items.map((item) => item.symbol), Math.max(0, options.maxEnrich ?? Number(process.env.INGEST_MAX_ENRICH ?? '25')), options.delayMs ?? 250)
+        enriched = enrichResult.enriched
+        diagnostics.enrichSkipped = enrichResult.skipped
+        diagnostics.enrichPending = enrichResult.pending
+      } else {
+        status = 'FAILED'
+        errorSummary = result.warnings[0] ?? 'No rows were parsed from the Chartink scan.'
+      }
     } else {
-      const fetched = await fetchSourceHtml(source.url, kind)
+      const fetched = await fetchSourceHtml(source.url)
       if (!fetched.html) {
         errorSummary = fetched.stopped ? `Source blocked the request (HTTP ${fetched.status}); stopping without a bypass.` : `Source returned HTTP ${fetched.status || 'error'}.`
         if (fetched.reason) warnings.push(fetched.reason)
@@ -532,7 +552,7 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
             diagnostics.enrichSkipped = enrichResult.skipped
             diagnostics.enrichPending = enrichResult.pending
           } else {
-            errorSummary = kind === 'chartink-scan' ? 'Chartink serves scan rows through its process API, so no rows were present in the HTML.' : 'No rows were parsed from this source.'
+            errorSummary = 'No rows were parsed from this source.'
           }
         }
       }

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { parseChartinkScreen } from './chartink'
+import { extractChartinkScan, parseChartinkProcess, parseChartinkScreen } from './chartink'
 import { parseSource, sourceKindFromLabel } from './index'
 import {
   cleanSymbol,
@@ -157,6 +157,59 @@ describe('parseChartinkScreen', () => {
     const result = parseChartinkScreen('<html><body><div id="app"></div></body></html>')
     expect(result.symbols).toEqual([])
     expect(result.warnings.length).toBe(1)
+  })
+})
+
+describe('extractChartinkScan', () => {
+  const PAGE = `<html><head><meta name="csrf-token" content="tok-123"></head><body>
+    <hidden-overlays-selects :custom-indicators-json="[]" :scan-json="{&quot;name&quot;:&quot;IPO Breakout&quot;,&quot;atlas_query&quot;:&quot;daily close &gt; 10 and close &#039;ok&#039;&quot;}"></hidden-overlays-selects>
+  </body></html>`
+
+  it('reads the csrf token, name and scan clause from the Vue-bound JSON attribute', () => {
+    const meta = extractChartinkScan(PAGE)
+    expect(meta.csrfToken).toBe('tok-123')
+    expect(meta.name).toBe('IPO Breakout')
+    expect(meta.scanClause).toBe("daily close > 10 and close 'ok'")
+  })
+
+  it('returns nulls instead of throwing on an unparseable/absent scan', () => {
+    expect(extractChartinkScan('<html></html>')).toEqual({ name: null, scanClause: null, csrfToken: null })
+  })
+})
+
+describe('parseChartinkProcess', () => {
+  it('maps endpoint rows to deduplicated symbols with their snapshot', () => {
+    const payload = JSON.stringify({
+      draw: 1,
+      recordsTotal: 3,
+      recordsFiltered: 3,
+      data: [
+        { sr: 1, nsecode: 'CPPLUS', name: 'Aditya Infotech Ltd', bsecode: '544466', close: 4474.6, per_chg: 2.24, volume: 542207 },
+        { sr: 2, nsecode: 'CPPLUS', name: 'Duplicate', close: 4474.6, per_chg: 2.24, volume: 1 },
+      ],
+    })
+    const result = parseChartinkProcess(payload)
+    expect(result.rows).toHaveLength(1)
+    expect(result.total).toBe(3)
+    expect(result.rows[0]).toEqual({ symbol: 'CPPLUS', companyName: 'Aditya Infotech Ltd', close: 4474.6, changePct: 2.24, volume: 542207, bseCode: '544466' })
+    expect(result.warnings.some((warning) => /reported 3/.test(warning))).toBe(true)
+  })
+
+  it('warns and returns nothing for a non-JSON body', () => {
+    const result = parseChartinkProcess('<html>blocked</html>')
+    expect(result.rows).toEqual([])
+    expect(result.warnings.length).toBe(1)
+  })
+
+  it('warns when the response has no data array', () => {
+    const result = parseChartinkProcess({ foo: 'bar' })
+    expect(result.rows).toEqual([])
+    expect(result.warnings.some((warning) => /data array/.test(warning))).toBe(true)
+  })
+
+  it('accepts an already-decoded object', () => {
+    const result = parseChartinkProcess({ data: [{ nsecode: 'TCS', name: 'TCS Ltd' }] })
+    expect(result.rows.map((row) => row.symbol)).toEqual(['TCS'])
   })
 })
 
