@@ -30,7 +30,7 @@ import { ensureStockDetail } from '@/lib/stocks'
 import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
 import { getCategoryData } from '@/lib/category-data'
 import { getPublicSnapshot } from '@/lib/public-data'
-import { CashFlowTrend, OwnershipTrend, ValuationBridge } from './card-extras'
+import { CashFlowTrend, GrowthCompareBars, OwnershipTrend, ValuationBridge } from './card-extras'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataMenu } from './copy-data-button'
@@ -164,7 +164,7 @@ function GrowthPanel({
 }) {
   if (!growth) return <p className="py-8 text-center text-xs text-slate-500">Quarterly data not available for growth comparison.</p>
   return (
-    <div>
+    <div className="flex h-full flex-1 flex-col">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[12px] text-slate-500">
         <span>
           Latest quarter: <span className="text-slate-300">{latest ?? '—'}</span>
@@ -177,6 +177,7 @@ function GrowthPanel({
           <GrowthRow key={row.key} label={row.label} period={growth[row.key]} />
         ))}
       </div>
+      <GrowthCompareBars growth={growth} />
     </div>
   )
 }

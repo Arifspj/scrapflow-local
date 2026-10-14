@@ -1,3 +1,4 @@
+import type { GrowthKey, GrowthPeriod } from '@/lib/growth'
 import { findDetailRow, toNumber } from '@/lib/stock-detail'
 import type { DetailTable } from '@/lib/scrapers/screener-detail'
 
@@ -85,6 +86,58 @@ export function OwnershipTrend({ table }: { table: DetailTable | null }) {
             </span>
           </li>
         ))}
+      </ul>
+    </div>
+  )
+}
+
+const GROWTH_META: { key: GrowthKey; label: string }[] = [
+  { key: 'sales', label: 'Sales' },
+  { key: 'operatingProfit', label: 'Op. Profit' },
+  { key: 'netProfit', label: 'Net Profit' },
+]
+
+/**
+ * Previous-vs-latest comparison bars for the three headline lines, sharing one
+ * scale so the taller of the two always reads at a glance. Latest bars are
+ * tinted by sign, and the block hides itself when neither side has a value.
+ */
+export function GrowthCompareBars({ growth }: { growth: Record<GrowthKey, GrowthPeriod> | null }) {
+  if (!growth) return null
+  const rows = GROWTH_META.map((meta) => ({ ...meta, period: growth[meta.key] }))
+  const values = rows.flatMap((row) => [row.period.previous, row.period.current]).filter((value): value is number => value != null)
+  if (!values.length) return null
+  const max = Math.max(...values.map((value) => Math.abs(value)), 1)
+
+  return (
+    <div className="mt-auto pt-3">
+      <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+        <span className="font-semibold uppercase tracking-wider">Previous vs latest</span>
+        <span className="inline-flex items-center gap-3">
+          <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-500" />Prev</span>
+          <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />Latest</span>
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {rows.map((row) => {
+          const tone = row.period.pct == null ? 'text-slate-500' : row.period.pct >= 0 ? 'text-emerald-400' : 'text-rose-400'
+          const previousWidth = row.period.previous == null ? 0 : (Math.abs(row.period.previous) / max) * 100
+          const currentWidth = row.period.current == null ? 0 : (Math.abs(row.period.current) / max) * 100
+          return (
+            <li key={row.key}>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-slate-300">{row.label}</span>
+                <span className={`font-mono font-semibold ${tone}`}>
+                  {row.period.pct == null ? 'N/A' : `${row.period.pct >= 0 ? '+' : ''}${row.period.pct.toFixed(1)}%`}
+                </span>
+              </div>
+              <div className="mt-1 space-y-1">
+                <span className="block h-1.5 rounded-full bg-slate-600/70" style={{ width: `${previousWidth}%` }} />
+                <span className={`block h-1.5 rounded-full ${(row.period.current ?? 0) < 0 ? 'bg-rose-500' : 'bg-cyan-400'}`} style={{ width: `${currentWidth}%` }} />
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
