@@ -8,7 +8,7 @@ import { DEFAULT_PAGE_SIZE } from '@/lib/paging'
 import { Pagination, usePagination } from '@/app/pagination'
 import { useSessionState } from '@/app/use-session-state'
 
-type SortKey = 'companyName' | 'price' | 'pe' | 'roce' | 'roe' | 'debtToEquity' | 'salesYoy' | 'marketCap' | 'score'
+type SortKey = 'companyName' | 'price' | 'pe' | 'roce' | 'roe' | 'debtToEquity' | 'salesYoy' | 'operatingProfitYoy' | 'profitYoy' | 'marketCap' | 'score'
 type FilterKey = SortKey | 'badge'
 
 const BADGE_TONE: Record<'good' | 'neutral', string> = {
@@ -46,6 +46,8 @@ const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
   { key: 'roe', label: 'ROE', numeric: true },
   { key: 'debtToEquity', label: 'Debt/Equity', numeric: true },
   { key: 'salesYoy', label: 'Sales YoY', numeric: true },
+  { key: 'operatingProfitYoy', label: 'O Profit', numeric: true },
+  { key: 'profitYoy', label: 'N Profit', numeric: true },
   { key: 'marketCap', label: 'Market Cap', numeric: true },
   { key: 'score', label: 'Score', numeric: true },
 ]
@@ -247,6 +249,8 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
                   <td className={`px-3 py-2 text-right font-mono tabular-nums ${valueClass(row.roe)}`}>{fmtNum(row.roe, 1)}</td>
                   <td className={`px-3 py-2 text-right font-mono tabular-nums ${valueClass(row.debtToEquity, true)}`}>{fmtNum(row.debtToEquity, 2)}</td>
                   <td className={`px-3 py-2 text-right font-mono tabular-nums ${valueClass(row.salesYoy)}`}>{fmtPct(row.salesYoy)}</td>
+                  <td className={`px-3 py-2 text-right font-mono tabular-nums ${valueClass(row.operatingProfitYoy)}`}>{fmtPct(row.operatingProfitYoy)}</td>
+                  <td className={`px-3 py-2 text-right font-mono tabular-nums ${valueClass(row.profitYoy)}`}>{fmtPct(row.profitYoy)}</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-200">{fmtCr(row.marketCap)}</td>
                   <td
                     className={`px-3 py-2 text-right font-mono font-bold tabular-nums ${scoreColor(band)}`}

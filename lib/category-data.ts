@@ -35,6 +35,7 @@ function toRowFromView(view: StockView): CategoryStockRow {
     roe: view.roe,
     debtToEquity: view.debtToEquity,
     salesYoy: view.salesYoy,
+    operatingProfitYoy: view.operatingProfitYoy,
     profitYoy: view.profitYoy,
     score: view.score,
     scoreCoverage: view.scoreBreakdown?.coveragePct ?? 0,

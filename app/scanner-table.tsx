@@ -17,11 +17,14 @@ export type ScannerRow = {
   marketCap: number | null
   roce: number | null
   de: number | null
+  salesYoy: number | null
+  opProfitYoy: number | null
+  netProfitYoy: number | null
   score: number | null
   updated: string
 }
 
-type Key = 'company' | 'ltp' | 'iv' | 'mos' | 'pe' | 'marketCap' | 'roce' | 'de' | 'score' | 'updated'
+type Key = 'company' | 'ltp' | 'iv' | 'mos' | 'pe' | 'marketCap' | 'roce' | 'de' | 'salesYoy' | 'opProfitYoy' | 'netProfitYoy' | 'score' | 'updated'
 
 const columns: { key: Key; label: string; numeric: boolean; filterable: boolean }[] = [
   { key: 'company', label: 'Company', numeric: false, filterable: true },
@@ -32,12 +35,28 @@ const columns: { key: Key; label: string; numeric: boolean; filterable: boolean 
   { key: 'marketCap', label: 'Market Cap', numeric: true, filterable: true },
   { key: 'roce', label: 'ROCE', numeric: true, filterable: true },
   { key: 'de', label: 'D/E', numeric: true, filterable: true },
+  { key: 'salesYoy', label: 'Sales YoY', numeric: true, filterable: true },
+  { key: 'opProfitYoy', label: 'O Profit YoY', numeric: true, filterable: true },
+  { key: 'netProfitYoy', label: 'N Profit YoY', numeric: true, filterable: true },
   { key: 'score', label: 'Score', numeric: true, filterable: true },
   { key: 'updated', label: 'Updated', numeric: false, filterable: false },
 ]
 
 function fmt(value: number | null, suffix = ''): string {
   return value == null || Number.isNaN(value) ? '—' : `${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}${suffix}`
+}
+
+/** Green for growth, red for decline, neutral grey when the value is missing. */
+function yoyClass(value: number | null): string {
+  if (value == null || Number.isNaN(value)) return 'text-slate-500'
+  if (value > 0) return 'text-emerald-400'
+  if (value < 0) return 'text-rose-400'
+  return 'text-slate-300'
+}
+
+function fmtYoy(value: number | null): string {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
 function sortValue(row: ScannerRow, key: Key): string | number | null {
@@ -172,7 +191,7 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-left text-xs">
+        <table className="w-full min-w-[1420px] text-left text-xs">
           <thead className="border-b border-[#162844] text-[12px] uppercase tracking-wider text-slate-500">
             <tr>
               {columns.map((column) => (
@@ -216,6 +235,9 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
                 <td className="px-4 py-3">{fmt(row.marketCap)}</td>
                 <td className="px-4 py-3 text-emerald-300">{fmt(row.roce, '%')}</td>
                 <td className="px-4 py-3">{fmt(row.de)}</td>
+                <td className={`px-4 py-3 tabular-nums ${yoyClass(row.salesYoy)}`}>{fmtYoy(row.salesYoy)}</td>
+                <td className={`px-4 py-3 tabular-nums ${yoyClass(row.opProfitYoy)}`}>{fmtYoy(row.opProfitYoy)}</td>
+                <td className={`px-4 py-3 tabular-nums ${yoyClass(row.netProfitYoy)}`}>{fmtYoy(row.netProfitYoy)}</td>
                 <td className="px-4 py-3 font-semibold text-amber-300">{row.score ?? '—'}</td>
                 <td className="px-4 py-3 text-slate-500">{row.updated ? new Date(row.updated).toLocaleDateString('en-IN') : '—'}</td>
               </tr>

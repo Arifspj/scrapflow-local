@@ -294,6 +294,8 @@ export type StockView = {
   valuation: TradeLevels
   salesYoy: number | null
   profitYoy: number | null
+  /** Year-on-year operating-profit growth (%) from the annual P&L, null when unavailable. */
+  operatingProfitYoy: number | null
   /** Year-on-year sales growth with periods/absolute values and comparability. */
   salesGrowth: GrowthReading | null
   /** Year-on-year profit growth with periods/absolute values and comparability. */
@@ -367,6 +369,8 @@ export function buildStockView(
   const profitSeries = rowValues(detail?.profitLoss, 'net profit', 8).filter((value) => value !== 0)
   const salesYoy = yoyPercent(salesSeries)
   const profitYoy = yoyPercent(profitSeries)
+  const operatingProfitSeries = rowValues(detail?.profitLoss, 'operating profit', 8).filter((value) => value !== 0)
+  const operatingProfitYoy = yoyPercent(operatingProfitSeries)
 
   const salesGrowth = annualGrowthReading(detail?.profitLoss, 'sales', 'Sales')
   const profitGrowth = annualGrowthReading(detail?.profitLoss, 'net profit', 'Net profit')
@@ -475,6 +479,7 @@ export function buildStockView(
     valuation,
     salesYoy,
     profitYoy,
+    operatingProfitYoy,
     salesGrowth,
     profitGrowth,
     cfoPat,

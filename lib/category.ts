@@ -86,6 +86,7 @@ export type CategoryStockRow = {
   roe: number | null
   debtToEquity: number | null
   salesYoy: number | null
+  operatingProfitYoy: number | null
   profitYoy: number | null
   score: number | null
   scoreCoverage: number

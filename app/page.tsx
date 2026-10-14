@@ -57,6 +57,9 @@ export default async function HomePage({ searchParams }: Props) {
       marketCap: view.marketCap,
       roce: view.roce,
       de: view.debtToEquity,
+      salesYoy: view.salesYoy,
+      opProfitYoy: view.operatingProfitYoy,
+      netProfitYoy: view.profitYoy,
       score: view.score,
       updated: row.lastSeenAt.toISOString(),
     }

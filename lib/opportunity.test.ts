@@ -29,6 +29,7 @@ function view(overrides: Partial<StockView> = {}): StockView {
     valuation: { intrinsic: null, marginOfSafety: null } as unknown as StockView['valuation'],
     salesYoy: null,
     profitYoy: null,
+    operatingProfitYoy: null,
     salesGrowth: null,
     profitGrowth: null,
     cfoPat: null,
