@@ -360,7 +360,7 @@ type TickerContext = {
  */
 async function buildTickerContext(scanner: string | null, market: string | null): Promise<TickerContext | null> {
   if (scanner) {
-    const snap = await getPublicSnapshot(scanner)
+    const snap = await getPublicSnapshot(scanner, '', 200)
     const items: TickerItem[] = snap.rows.map((row) => {
       const v = buildStockView(row.stock, row.stock.fundamentals[0] ?? null)
       return { symbol: v.symbol, company: v.companyName || v.symbol, price: v.price, score: v.score }

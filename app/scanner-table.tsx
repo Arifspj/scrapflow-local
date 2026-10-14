@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { DEFAULT_PAGE_SIZE } from '@/lib/paging'
+import { Pagination, usePagination } from './pagination'
 
 export type ScannerRow = {
   id: string
@@ -89,6 +91,7 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
   const [sortKey, setSortKey] = useState<Key>('score')
   const [asc, setAsc] = useState(false)
   const [filters, setFilters] = useState<Partial<Record<Key, string>>>({})
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const stockHref = (symbol: string) =>
     `/stocks/${encodeURIComponent(symbol)}${scannerId ? `?scanner=${encodeURIComponent(scannerId)}` : ''}`
@@ -138,6 +141,13 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
       return ((av as number) - (bv as number)) * factor
     })
   }, [filtered, sortKey, asc])
+
+  const { page, setPage, pageCount, start, pageRows } = usePagination(sorted, pageSize)
+
+  // Any change to the result set or its ordering returns the viewer to page 1.
+  useEffect(() => {
+    setPage(1)
+  }, [filters, sortKey, asc, pageSize, setPage])
 
   const inputClass =
     'w-full min-w-0 rounded border border-[#182c49] bg-[#0b182b] px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal text-slate-200 placeholder-slate-600 outline-none focus:border-sky-500'
@@ -191,7 +201,7 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
             </tr>
           </thead>
           <tbody className="divide-y divide-[#12233c]">
-            {sorted.map((row) => (
+            {pageRows.map((row) => (
               <tr key={row.id} className="hover:bg-sky-400/[.04]">
                 <td className="px-4 py-3">
                   <Link href={stockHref(row.symbol)} className="font-semibold text-white hover:text-sky-300">{row.company}</Link>
@@ -208,7 +218,7 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
                 <td className="px-4 py-3 text-slate-500">{row.updated ? new Date(row.updated).toLocaleDateString('en-IN') : '—'}</td>
               </tr>
             ))}
-            {sorted.length === 0 && (
+            {pageRows.length === 0 && (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-10 text-center text-xs text-slate-500">
                   No companies match these filters.
@@ -218,6 +228,17 @@ export function ScannerTable({ rows, scannerId }: { rows: ScannerRow[]; scannerI
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        onPage={setPage}
+        shown={pageRows.length}
+        start={start}
+        total={sorted.length}
+        pageSize={pageSize}
+        onPageSize={setPageSize}
+      />
     </div>
   )
 }

@@ -1,9 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { scoreBand, scoreColor } from '@/lib/score'
 import type { CategoryStockRow } from '@/lib/category'
+import { DEFAULT_PAGE_SIZE } from '@/lib/paging'
+import { Pagination, usePagination } from '@/app/pagination'
 
 type SortKey = 'companyName' | 'price' | 'pe' | 'roce' | 'roe' | 'debtToEquity' | 'salesYoy' | 'marketCap' | 'score'
 type FilterKey = SortKey | 'badge'
@@ -92,6 +94,7 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
   const [sortKey, setSortKey] = useState<SortKey>('marketCap')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState<Partial<Record<FilterKey, string>>>({})
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const badgeOptions = useMemo(() => {
     const set = new Set<string>()
@@ -133,6 +136,13 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
       return sortDir === 'asc' ? an - bn : bn - an
     })
   }, [rows, filters, sortKey, sortDir])
+
+  const { page, setPage, pageCount, start, pageRows } = usePagination(filtered, pageSize)
+
+  // Any change to the filters or ordering returns the viewer to page 1.
+  useEffect(() => {
+    setPage(1)
+  }, [filters, sortKey, sortDir, pageSize, setPage])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
@@ -219,7 +229,7 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
             </tr>
           </thead>
           <tbody className="divide-y divide-[#142036]">
-            {filtered.map((row) => {
+            {pageRows.map((row) => {
               const band = scoreBand(row.score)
               return (
                 <tr key={row.symbol} className="bg-[#0b1524] transition-colors hover:bg-[#0e1a2e]">
@@ -257,7 +267,7 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
                 </tr>
               )
             })}
-            {filtered.length === 0 && (
+            {pageRows.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length + 1} className="px-3 py-8 text-center text-xs text-slate-500">
                   No companies match this filter.
@@ -267,6 +277,17 @@ export function CategoryTable({ rows, contextSlug }: { rows: CategoryStockRow[];
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        onPage={setPage}
+        shown={pageRows.length}
+        start={start}
+        total={filtered.length}
+        pageSize={pageSize}
+        onPageSize={setPageSize}
+      />
     </div>
   )
 }

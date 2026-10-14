@@ -21,14 +21,24 @@ export function display(value: unknown, suffix = '') {
   return value == null ? '—' : `${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}${suffix}`
 }
 
-export async function getPublicSnapshot(scannerId?: string, search = '') {
+/**
+ * Upper bound on rows returned to a table so a single request can never fan out
+ * unbounded. The tables paginate client-side over the full set (their metrics
+ * are derived from raw snapshots, so they cannot be sorted in SQL), which is why
+ * the cap is high enough to hold a whole scanner rather than a single page.
+ * `total` is still the true membership count, so if the cap were ever hit the UI
+ * would show the real total instead of silently truncating.
+ */
+export const PUBLIC_TABLE_ROW_CAP = 5000
+
+export async function getPublicSnapshot(scannerId?: string, search = '', limit: number = PUBLIC_TABLE_ROW_CAP) {
   const scanner = scannerId
     ? await prisma.scanner.findFirst({ where: { OR: [{ id: scannerId }, { name: scannerId }], enabled: true }, select: { id: true, name: true, category: true, description: true } })
     : await prisma.scanner.findFirst({ where: { enabled: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, category: true, description: true } })
   if (!scanner) return { scanner: null, rows: [], total: 0, stockCount: 0, latest: null }
   const where = { scannerId: scanner.id, ...(search ? { stock: { OR: [{ symbol: { contains: search.toUpperCase() } }, { companyName: { contains: search, mode: 'insensitive' as const } }] } } : {}) }
   const [members, total, stockCount, latest] = await Promise.all([
-    prisma.scannerStock.findMany({ where, include: { stock: { include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } } } }, orderBy: { lastSeenAt: 'desc' }, take: 100 }),
+    prisma.scannerStock.findMany({ where, include: { stock: { include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } } } }, orderBy: { lastSeenAt: 'desc' }, take: limit }),
     prisma.scannerStock.count({ where }),
     prisma.stock.count(),
     prisma.stock.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
