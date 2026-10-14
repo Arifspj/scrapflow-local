@@ -91,16 +91,17 @@ export function OwnershipTrend({ table }: { table: DetailTable | null }) {
   )
 }
 
-const GROWTH_META: { key: GrowthKey; label: string }[] = [
-  { key: 'sales', label: 'Sales' },
-  { key: 'operatingProfit', label: 'Op. Profit' },
-  { key: 'netProfit', label: 'Net Profit' },
+const GROWTH_META: { key: GrowthKey; label: string; color: string }[] = [
+  { key: 'sales', label: 'Sales', color: '#22d3ee' },
+  { key: 'operatingProfit', label: 'Op. Profit', color: '#34d399' },
+  { key: 'netProfit', label: 'Net Profit', color: '#f87171' },
 ]
 
 /**
  * Previous-vs-latest comparison bars for the three headline lines, sharing one
- * scale so the taller of the two always reads at a glance. Latest bars are
- * tinted by sign, and the block hides itself when neither side has a value.
+ * scale so the taller of the two always reads at a glance. Each line keeps its
+ * own colour (cyan sales, emerald operating profit, rose net profit) and the
+ * faded bar is the previous period; the block hides when neither side has data.
  */
 export function GrowthCompareBars({ growth }: { growth: Record<GrowthKey, GrowthPeriod> | null }) {
   if (!growth) return null
@@ -113,9 +114,9 @@ export function GrowthCompareBars({ growth }: { growth: Record<GrowthKey, Growth
     <div className="mt-auto pt-3">
       <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
         <span className="font-semibold uppercase tracking-wider">Previous vs latest</span>
-        <span className="inline-flex items-center gap-3">
-          <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-500" />Prev</span>
-          <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />Latest</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-1.5 w-3 rounded-full bg-slate-500 opacity-40" />
+          <span>previous</span>
         </span>
       </div>
       <ul className="space-y-2">
@@ -126,14 +127,17 @@ export function GrowthCompareBars({ growth }: { growth: Record<GrowthKey, Growth
           return (
             <li key={row.key}>
               <div className="flex items-center justify-between text-[12px]">
-                <span className="text-slate-300">{row.label}</span>
+                <span className="inline-flex items-center gap-1.5 text-slate-300">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: row.color }} />
+                  {row.label}
+                </span>
                 <span className={`font-mono font-semibold ${tone}`}>
                   {row.period.pct == null ? 'N/A' : `${row.period.pct >= 0 ? '+' : ''}${row.period.pct.toFixed(1)}%`}
                 </span>
               </div>
               <div className="mt-1 space-y-1">
-                <span className="block h-1.5 rounded-full bg-slate-600/70" style={{ width: `${previousWidth}%` }} />
-                <span className={`block h-1.5 rounded-full ${(row.period.current ?? 0) < 0 ? 'bg-rose-500' : 'bg-cyan-400'}`} style={{ width: `${currentWidth}%` }} />
+                <span className="block h-1.5 rounded-full" style={{ width: `${previousWidth}%`, background: row.color, opacity: 0.4 }} />
+                <span className="block h-1.5 rounded-full" style={{ width: `${currentWidth}%`, background: row.color }} />
               </div>
             </li>
           )
