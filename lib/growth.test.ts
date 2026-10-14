@@ -63,6 +63,18 @@ describe('computeQuarterGrowth', () => {
     expect(growth?.qoq.operatingProfit.previous).toBe(7)
   })
 
+  it('matches the finance aliases (Revenue / Financing Profit) for banks and NBFCs', () => {
+    const table = quartersTable(WIDE, {
+      Revenue: [200, 210, 220, 230, 240, 250, 260, 300],
+      'Financing Profit': [40, 42, 44, 46, 48, 50, 52, 85],
+      'Net Profit': [25, 26, 27, 28, 29, 30, 31, 55],
+    })
+    const growth = computeQuarterGrowth(table)
+    expect(growth?.qoq.sales.pct).toBeCloseTo((300 / 260 - 1) * 100, 1)
+    expect(growth?.yoy.sales.pct).toBeCloseTo((300 / 230 - 1) * 100, 1)
+    expect(growth?.qoq.operatingProfit.pct).toBeCloseTo((85 / 52 - 1) * 100, 1)
+  })
+
   it('returns no YoY when fewer than four quarters are available', () => {
     const table = quartersTable(
       ['Dec 2025', 'Mar 2026', 'Jun 2026'],

@@ -5,7 +5,7 @@ import { annualGrowthReading, type GrowthReading } from './growth-quality'
 import { buildBusinessBadges, type BusinessBadge } from './business-badges'
 import { computeQuality, type QualityResult } from './quality'
 import { computeScore, type ScoreBreakdown } from './score'
-import type { DetailRow, DetailTable, IndustryLink, ScreenerDetail } from './scrapers/screener-detail'
+import { rowLabelMatches, type DetailRow, type DetailTable, type IndustryLink, type ScreenerDetail } from './scrapers/screener-detail'
 
 export function toNumber(value: unknown): number | null {
   if (value == null) return null
@@ -63,8 +63,7 @@ export function isScreenerDetail(value: unknown): value is ScreenerDetail {
 
 export function findDetailRow(table: DetailTable | null | undefined, label: string): DetailRow | null {
   if (!table) return null
-  const target = label.toLowerCase()
-  return table.rows.find((row) => row.label.toLowerCase().startsWith(target)) ?? null
+  return table.rows.find((row) => rowLabelMatches(row.label, label)) ?? null
 }
 
 export function lastNonEmpty(values: string[] | undefined): string | null {

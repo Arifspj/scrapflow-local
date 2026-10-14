@@ -1,4 +1,4 @@
-import type { DetailTable } from './scrapers/screener-detail'
+import { rowLabelMatches, type DetailTable } from './scrapers/screener-detail'
 
 /**
  * Growth-quality assessment.
@@ -88,8 +88,7 @@ export function assessGrowth(input: {
 /** Chronological annual values for a row with their column labels, TTM dropped. */
 export function annualSeriesWithLabels(table: DetailTable | null | undefined, label: string): { value: number; label: string }[] {
   if (!table) return []
-  const target = label.toLowerCase()
-  const row = table.rows.find((entry) => entry.label.toLowerCase().startsWith(target))
+  const row = table.rows.find((entry) => rowLabelMatches(entry.label, label))
   if (!row) return []
   const out: { value: number; label: string }[] = []
   table.columns.forEach((column, index) => {

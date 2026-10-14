@@ -1,4 +1,4 @@
-import type { DetailRow, DetailTable, ScreenerDetail } from './scrapers/screener-detail'
+import { rowLabelMatches, type DetailRow, type DetailTable, type ScreenerDetail } from './scrapers/screener-detail'
 import { annualSeriesWithLabels, assessGrowth, type GrowthReading } from './growth-quality'
 
 /**
@@ -54,8 +54,7 @@ function toNumber(value: unknown): number | null {
 
 function findRow(table: DetailTable | null | undefined, label: string): DetailRow | undefined {
   if (!table) return undefined
-  const target = label.toLowerCase()
-  return table.rows.find((row) => row.label.toLowerCase().startsWith(target))
+  return table.rows.find((row) => rowLabelMatches(row.label, label))
 }
 
 type AnnualPoint = { label: string; sales: number | null; profit: number | null; opm: number | null }

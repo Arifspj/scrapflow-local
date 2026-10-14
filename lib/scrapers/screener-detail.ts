@@ -167,8 +167,25 @@ export function latestRowNumber(row: DetailRow | undefined, columns: string[]): 
 
 export function findRow(table: DetailTable | null, label: string): DetailRow | undefined {
   if (!table) return undefined
-  const target = label.toLowerCase()
-  return table.rows.find((row) => row.label.toLowerCase().startsWith(target))
+  return table.rows.find((row) => rowLabelMatches(row.label, label))
+}
+
+/**
+ * Screener renames a few P&L rows for financial companies (banks, NBFCs): the
+ * "Sales" row becomes "Revenue" and "Operating Profit" becomes "Financing
+ * Profit". Matching accepts either spelling so growth, margins and valuation
+ * keep working without special-casing every call site.
+ */
+const ROW_LABEL_ALIASES: Record<string, string[]> = {
+  sales: ['sales', 'revenue'],
+  'operating profit': ['operating profit', 'financing profit'],
+}
+
+/** True when a statement row label matches `target`, honouring finance aliases. */
+export function rowLabelMatches(rowLabel: string, target: string): boolean {
+  const label = rowLabel.toLowerCase()
+  const needles = ROW_LABEL_ALIASES[target.toLowerCase()] ?? [target.toLowerCase()]
+  return needles.some((needle) => label.startsWith(needle))
 }
 
 const LEVEL_BY_TITLE: Record<string, IndustryLevelName> = {
