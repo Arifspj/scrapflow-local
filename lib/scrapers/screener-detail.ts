@@ -179,6 +179,9 @@ export function findRow(table: DetailTable | null, label: string): DetailRow | u
 const ROW_LABEL_ALIASES: Record<string, string[]> = {
   sales: ['sales', 'revenue'],
   'operating profit': ['operating profit', 'financing profit'],
+  // Screener alternates between "Borrowing" and "Borrowings" (and, for some
+  // finance layouts, only the singular). The prefix covers both.
+  borrowings: ['borrowing'],
 }
 
 /** True when a statement row label matches `target`, honouring finance aliases. */

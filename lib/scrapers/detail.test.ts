@@ -8,6 +8,7 @@ import {
   buildStockView,
   deriveScore,
   deriveValuation,
+  findDetailRow,
   formatIstTimestamp,
   isScreenerDetail,
   yoyPercent,
@@ -174,6 +175,14 @@ describe('stock-detail helpers', () => {
     const chart = buildChartSeries(pnl, 8, { borrowings: balance })
     expect(chart?.series.map((entry) => entry.name)).toEqual(['Sales', 'Op. Profit', 'Net Profit', 'Borrowings'])
     expect(chart?.series[3].values).toEqual([8, 9, 40])
+  })
+
+  it('matches the singular "Borrowing" balance-sheet label', () => {
+    const balance: DetailTable = {
+      columns: ['Mar 2025', 'Mar 2026'],
+      rows: [{ label: 'Borrowing', values: ['33', '261'] }],
+    }
+    expect(findDetailRow(balance, 'borrowings')?.values).toEqual(['33', '261'])
   })
 
   it('leaves borrowings blank on periods the balance sheet does not cover', () => {
