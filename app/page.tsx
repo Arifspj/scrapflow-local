@@ -10,6 +10,7 @@ import { AutoRefresh } from './auto-refresh'
 import { ScannerSelect } from './scanner-select'
 import { ScannerTable } from './scanner-table'
 import { OpportunityDashboard } from './opportunity-dashboard'
+import { ScrollToTop } from './scroll-to-top'
 import { StockSearch } from './stock-search'
 
 export const dynamic = 'force-dynamic'
@@ -63,6 +64,7 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main className="min-h-screen bg-[#050b14] text-slate-300 antialiased">
       <AutoRefresh />
+      <ScrollToTop />
       <header className="sticky top-0 z-20 border-b border-[#122238] bg-[#071120]/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1720px] items-center justify-between gap-4 px-4 py-3">
           <Link href="/" className="flex shrink-0 items-center gap-2.5">

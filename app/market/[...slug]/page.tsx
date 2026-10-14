@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getCategoryData } from '@/lib/category-data'
 import { categoryHref, categoryLevel, categorySourceUrl, LEVEL_LABEL, normalizeMarketSegments } from '@/lib/category'
+import { ScrollToTop } from '@/app/scroll-to-top'
 import { CategoryTable } from './category-table'
 import { ImportCategoryButton } from './import-category-button'
 
@@ -133,6 +134,7 @@ export default async function MarketCategoryPage({ params }: Props) {
           </section>
         )}
       </div>
+      <ScrollToTop />
     </main>
   )
 }
