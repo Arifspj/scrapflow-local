@@ -43,7 +43,7 @@ function PointReadout({ chart, index, selected }: { chart: ChartSeries; index: n
         {selected ? 'Selected period' : 'Latest period'}: <span className="text-cyan-300">{period}</span>
       </div>
       <div className="mt-1.5 min-w-[220px] overflow-x-auto">
-        <table className="w-full text-[12px]">
+        <table className="qscan-table w-full text-[12px]">
           <tbody>
             {chart.series.map((entry) => {
               const value = entry.values[index]

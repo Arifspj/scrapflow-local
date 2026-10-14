@@ -187,7 +187,7 @@ function FinancialTable({ table, suffix = '' }: { table: DetailTable | null; suf
   if (!table) return <p className="py-6 text-center text-xs text-slate-500">Financial data not available. Re-import this stock to fetch it.</p>
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-2xs">
+      <table className="qscan-table w-full text-left text-2xs">
         <thead>
           <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
             <th className="py-1">Metric</th>
@@ -249,7 +249,7 @@ function ValuationTable({ view }: { view: StockView }) {
     { label: 'Stock P/E', value: formatNum(view.pe, 1), tone: peTone },
   ]
   return (
-    <table className="w-full text-left text-xs">
+    <table className="qscan-table w-full text-left text-xs">
       <thead>
         <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
           <th className="py-1">Metric</th>
@@ -325,7 +325,7 @@ function PeerComparison({ view }: { view: StockView }) {
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-2xs">
+        <table className="qscan-table w-full text-left text-2xs">
           <thead>
             <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
               <th className="py-1">Company</th>
@@ -348,7 +348,7 @@ function PeerComparison({ view }: { view: StockView }) {
               return (
                 <tr
                   key={peer.companyId ?? `${peer.name}-${index}`}
-                  className={[peer.isSelf ? 'bg-[#101d33]' : 'hover:bg-[#0f1828]', isTopPick ? 'ring-1 ring-inset ring-amber-500/40' : ''].join(' ')}
+                  className={[peer.isSelf ? 'qscan-row-selected' : '', isTopPick ? 'ring-1 ring-inset ring-amber-500/40' : ''].join(' ')}
                 >
                   <td className="py-1 pr-2 font-medium text-slate-200">
                     {peerSymbolLink(peer, peer.name)}
@@ -722,7 +722,7 @@ export default async function StockPage({ params, searchParams }: Props) {
             </Card>
             <Card title="Shareholding Pattern" id="shareholding">
               {shareholding ? (
-                <table className="w-full text-left text-2xs">
+                <table className="qscan-table w-full text-left text-2xs">
                   <thead>
                     <tr className="border-b border-[#19263f] text-[12px] text-slate-400">
                       <th className="py-1">Category</th>

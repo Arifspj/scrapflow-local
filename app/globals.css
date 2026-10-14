@@ -214,6 +214,34 @@ html {
   background: #0b1220;
 }
 
+/* Stock-detail data tables: subtle zebra striping + smooth row hover so the
+   financial statements are easy to scan. Opt-in via `.qscan-table`, so
+   unrelated admin/scanner tables are left untouched. */
+.qscan-table tbody tr {
+  transition: background-color 150ms ease;
+}
+.qscan-table tbody tr:nth-child(odd) {
+  background-color: #0e1626;
+}
+.qscan-table tbody tr:nth-child(even) {
+  background-color: #121d31;
+}
+/* Preserve an explicit selected/self row above the stripes. */
+.qscan-table tbody tr.qscan-row-selected {
+  background-color: #16294a;
+}
+
+/* Only animate hover on devices that actually hover, so touch taps do not
+   leave a stuck highlight. */
+@media (hover: hover) {
+  .qscan-table tbody tr:hover {
+    background-color: #1a2a46;
+  }
+  .qscan-table tbody tr.qscan-row-selected:hover {
+    background-color: #1b3156;
+  }
+}
+
 /* Horizontal stock ticker: scrollable but with no visible scrollbar. */
 .ticker-scroll {
   scrollbar-width: none;
