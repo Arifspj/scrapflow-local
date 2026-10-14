@@ -75,7 +75,7 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
   const yearLabel = (frac: number) => `Yr ${Math.round(frac * years)}`
 
   return (
-    <div className="flex flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3" data-purpose="roce-calculator">
+    <div className="flex h-full flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3" data-purpose="roce-calculator">
       <div className="flex items-center justify-between border-b border-[#1b263d] pb-2">
         <div className="flex items-center space-x-2">
           <div className="flex h-6 w-6 items-center justify-center rounded border border-cyan-700/60 bg-cyan-950/70 text-cyan-400 shadow-sm">
@@ -295,7 +295,7 @@ export function TradeCalculator({ entry }: { entry: number | null }) {
     setter(event.target.value.replace(/[^0-9.]/g, ''))
 
   return (
-    <div className="flex flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3" data-purpose="trade-calculator">
+    <div className="flex h-full flex-col justify-between rounded-lg border border-[#1d2b45] bg-[#0e1626] p-3" data-purpose="trade-calculator">
       <div className="flex items-center justify-between border-b border-[#1b263d] pb-2">
         <div className="flex items-center space-x-2">
           <div className="flex h-6 w-6 items-center justify-center rounded border border-cyan-700/60 bg-cyan-950/70 text-cyan-400 shadow-sm">

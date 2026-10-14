@@ -30,6 +30,7 @@ import { ensureStockDetail } from '@/lib/stocks'
 import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
 import { getCategoryData } from '@/lib/category-data'
 import { getPublicSnapshot } from '@/lib/public-data'
+import { CashFlowTrend, OwnershipTrend, ValuationBridge } from './card-extras'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
 import { CopyDataMenu } from './copy-data-button'
@@ -116,7 +117,7 @@ function Card({ title, right, children, id, className }: { title: string; right?
         <h3 className="text-xs font-bold text-white">{title}</h3>
         {right}
       </div>
-      <div className="mt-1">{children}</div>
+      <div className="mt-1 flex flex-1 flex-col">{children}</div>
     </div>
   )
 }
@@ -664,7 +665,7 @@ export default async function StockPage({ params, searchParams }: Props) {
             ))}
           </section>
 
-          <section aria-label="Growth" className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
+          <section aria-label="Growth" className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Card title="Quarter on Quarter (QoQ)">
               <GrowthPanel
                 growth={growth?.qoq ?? null}
@@ -708,10 +709,11 @@ export default async function StockPage({ params, searchParams }: Props) {
               ) : (
                 <p className="py-6 text-center text-xs text-slate-500">Shareholding data not available.</p>
               )}
+              {shareholding && <OwnershipTrend table={shareholding} />}
             </Card>
           </section>
 
-          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Card title="Quarterly Trend (₹ Cr)">
               <QuarterlyBarChart chart={quarterlyChart} />
             </Card>
@@ -721,7 +723,7 @@ export default async function StockPage({ params, searchParams }: Props) {
             <RoceCalculator roce={view.roce} />
           </section>
 
-          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Card title="Intrinsic Value">
               <div className="grid grid-cols-3 gap-2 py-3 text-center">
                 <div>
@@ -757,6 +759,7 @@ export default async function StockPage({ params, searchParams }: Props) {
                   Fair P/E = min(8.5 + 2 × growth, 38.5); growth is the latest YoY net profit (0% when EBIT is negative, capped 5% when other income &gt; 40% of PBT, hard cap 15%). Margin of safety is 0% when the price is above fair value. Not investment advice.
                 </div>
               </div>
+              <ValuationBridge graham={view.valuation.graham} growth={view.valuation.growthValue} intrinsic={view.valuation.intrinsic} price={view.price} />
             </Card>
             <TradeCalculator entry={view.price} />
           </section>
@@ -769,12 +772,13 @@ export default async function StockPage({ params, searchParams }: Props) {
             <FinancialTable table={quartersTable} />
           </Card>
 
-          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Card title="Annual Profit & Loss (₹ Cr)">
               <FinancialTable table={annualTable} />
             </Card>
             <Card title="Cash Flow Statement (₹ Cr)">
               <FinancialTable table={cashFlowTable} />
+              <CashFlowTrend profitLoss={view.detail?.profitLoss} cashFlow={view.detail?.cashFlow} />
             </Card>
           </section>
 
