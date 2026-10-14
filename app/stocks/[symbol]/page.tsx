@@ -38,6 +38,7 @@ import { ScoreBadge } from './score-breakdown'
 import { ScrollToTop } from './scroll-to-top'
 import type { SidebarItem } from './sidebar'
 import { StockTicker, type TickerItem } from './stock-ticker'
+import { StockSearch } from '@/app/stock-search'
 import { StockWorkspace } from './workspace'
 
 export const dynamic = 'force-dynamic'
@@ -556,9 +557,7 @@ export default async function StockPage({ params, searchParams }: Props) {
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
-          <form action="/" method="get" className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
-            <input name="q" placeholder="Search company name or symbol..." className="w-full rounded-md border border-[#1e293b] bg-[#0a0f1b] py-1.5 pl-3 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none" />
-          </form>
+          <StockSearch variant="compact" />
           <RefreshButton symbol={view.symbol} />
         </div>
       </header>

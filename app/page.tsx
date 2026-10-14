@@ -10,6 +10,7 @@ import { AutoRefresh } from './auto-refresh'
 import { ScannerSelect } from './scanner-select'
 import { ScannerTable } from './scanner-table'
 import { OpportunityDashboard } from './opportunity-dashboard'
+import { StockSearch } from './stock-search'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,9 +76,7 @@ export default async function HomePage({ searchParams }: Props) {
             <Link className="rounded-md bg-[#0b386b] px-3.5 py-1.5 text-white" href="/">Scanner</Link>
             <Link className="rounded-md px-3.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white" href="/admin">Admin</Link>
           </nav>
-          <form action="/" className="hidden w-72 sm:block">
-            <input name="q" defaultValue={params.q} placeholder="Search company or symbol..." className="w-full rounded-lg border border-[#162740] bg-[#0b1626] px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500" />
-          </form>
+          <StockSearch />
         </div>
       </header>
 
