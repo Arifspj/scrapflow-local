@@ -124,9 +124,10 @@ function cumulativeRatio(numerators: number[], denominators: number[], window = 
   return sumNumerator / sumDenominator
 }
 
+/** A series value may be null when the period is not covered by the source table. */
 export type ChartSeries = {
   columns: string[]
-  series: { name: string; color: string; values: number[] }[]
+  series: { name: string; color: string; values: (number | null)[] }[]
 }
 
 const CHART_SPECS = [
@@ -135,16 +136,43 @@ const CHART_SPECS = [
   { label: 'net profit', name: 'Net Profit', color: '#f87171' },
 ]
 
-export function buildChartSeries(table: DetailTable | null | undefined, limit = 8): ChartSeries | null {
+/** Debt overlay read from the balance sheet; shown only on matching periods. */
+const DEBT_SPEC = { label: 'borrowings', name: 'Borrowings', color: '#fbbf24' }
+
+/**
+ * Build the chart series for a statement table (quarters or annual P&L). When a
+ * `borrowings` balance-sheet table is supplied, a "Borrowings" series is appended
+ * and matched by column header — so quarterly charts only show debt on the
+ * March (year-end) columns the balance sheet actually reports, never interpolated.
+ */
+export function buildChartSeries(
+  table: DetailTable | null | undefined,
+  limit = 8,
+  options?: { borrowings?: DetailTable | null },
+): ChartSeries | null {
   if (!table || !table.rows.length) return null
   const columns: string[] = []
-  const series = CHART_SPECS.map((spec) => ({ name: spec.name, color: spec.color, values: [] as number[] }))
+  const specs = options?.borrowings ? [...CHART_SPECS, DEBT_SPEC] : [...CHART_SPECS]
+  const series = specs.map((spec) => ({ name: spec.name, color: spec.color, values: [] as (number | null)[] }))
+
+  const borrowingsByColumn = new Map<string, number>()
+  if (options?.borrowings) {
+    const row = findDetailRow(options.borrowings, DEBT_SPEC.label)
+    options.borrowings.columns.forEach((column, index) => {
+      const value = toNumber(row?.values[index])
+      if (value != null) borrowingsByColumn.set(column, value)
+    })
+  }
 
   for (let index = 0; index < table.columns.length; index += 1) {
     const header = table.columns[index]
     if (/ttm/i.test(header)) continue
     columns.push(header)
-    CHART_SPECS.forEach((spec, specIndex) => {
+    specs.forEach((spec, specIndex) => {
+      if (spec === DEBT_SPEC) {
+        series[specIndex].values.push(borrowingsByColumn.get(header) ?? null)
+        return
+      }
       const row = findDetailRow(table, spec.label)
       series[specIndex].values.push(toNumber(row?.values[index]) ?? 0)
     })

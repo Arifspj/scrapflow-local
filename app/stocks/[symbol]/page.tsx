@@ -27,6 +27,7 @@ import {
 } from '@/lib/metrics'
 import type { DetailTable, IndustryLink, PeerRow } from '@/lib/scrapers/screener-detail'
 import { ensureStockDetail } from '@/lib/stocks'
+import { rankPeers } from '@/lib/peer-rank'
 import { categoryHref, categoryLevel, LEVEL_LABEL, MARKET_LEVELS } from '@/lib/category'
 import { getCategoryData } from '@/lib/category-data'
 import { getPublicSnapshot } from '@/lib/public-data'
@@ -297,12 +298,32 @@ function PeerComparison({ view }: { view: StockView }) {
     ? view.capturedAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
     : '—'
 
+  const { bestRoce, topPick, topPickScore, topPickReasons } = rankPeers(peers)
+
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between text-[12px] text-slate-500">
         <span>Source: screener.in peer comparison</span>
         <span>Updated {updated}</span>
       </div>
+      {(bestRoce || topPick) && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded border border-[#1b2d4b] bg-[#0a1220] px-3 py-2 text-[12px]">
+          {bestRoce && (
+            <span className="text-slate-400">
+              Best ROCE:{' '}
+              <span className="font-bold text-emerald-300">{bestRoce.name}</span>{' '}
+              <span className="font-mono text-emerald-400">{formatPct(bestRoce.roce)}</span>
+            </span>
+          )}
+          {topPick && (
+            <span className="text-slate-400" title={topPickReasons.length ? `Rule-based blend — ${topPickReasons.join(' · ')}` : undefined}>
+              Top Pick:{' '}
+              <span className="font-bold text-amber-300">{topPick.name}</span>
+              {topPickScore != null && <span className="font-mono text-amber-400/80"> {topPickScore.toFixed(0)}</span>}
+            </span>
+          )}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-2xs">
           <thead>
@@ -322,18 +343,33 @@ function PeerComparison({ view }: { view: StockView }) {
               const profitTone = getMetricStatus('profitGrowth', peer.profitGrowth)
               const roceTone = getMetricStatus('roce', peer.roce)
               const peTone = getMetricStatus('pe', peer.pe)
+              const isTopPick = topPick === peer
+              const isBestRoce = bestRoce === peer
               return (
-                <tr key={peer.companyId ?? `${peer.name}-${index}`} className={peer.isSelf ? 'bg-[#101d33]' : 'hover:bg-[#0f1828]'}>
+                <tr
+                  key={peer.companyId ?? `${peer.name}-${index}`}
+                  className={[peer.isSelf ? 'bg-[#101d33]' : 'hover:bg-[#0f1828]', isTopPick ? 'ring-1 ring-inset ring-amber-500/40' : ''].join(' ')}
+                >
                   <td className="py-1 pr-2 font-medium text-slate-200">
                     {peerSymbolLink(peer, peer.name)}
                     {peer.isSelf && <span className="ml-1 text-[11px] font-normal text-cyan-300">(this)</span>}
+                    {isTopPick && (
+                      <span className="ml-1 rounded border border-amber-500/50 bg-amber-950/40 px-1 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                        Top Pick
+                      </span>
+                    )}
                   </td>
                   <td className="py-1 text-right font-mono text-slate-300">{formatNum(peer.cmp)}</td>
                   <td className="py-1 text-right font-mono text-slate-300">{formatNum(peer.marketCap, 0)}</td>
                   <td className={`py-1 text-right font-mono ${getMetricColorClass(peTone)}`}>{formatNum(peer.pe, 1)}</td>
                   <td className={`py-1 text-right font-mono ${getMetricColorClass(salesTone)}`}>{formatPct(peer.salesGrowth)}</td>
                   <td className={`py-1 text-right font-mono ${getMetricColorClass(profitTone)}`}>{formatPct(peer.profitGrowth)}</td>
-                  <td className={`py-1 text-right font-mono ${getMetricColorClass(roceTone)}`}>{formatPct(peer.roce)}</td>
+                  <td
+                    className={`py-1 text-right font-mono ${getMetricColorClass(roceTone)} ${isBestRoce ? 'font-bold' : ''}`}
+                    title={isBestRoce ? 'Best ROCE among the comparison' : undefined}
+                  >
+                    {formatPct(peer.roce)}
+                  </td>
                 </tr>
               )
             })}
@@ -445,11 +481,12 @@ export default async function StockPage({ params, searchParams }: Props) {
     score: item.view.score,
   }))
 
-  const quarterlyChart = buildChartSeries(sliceTable(view.detail?.quarters, 8), 8)
-  const annualChart = buildChartSeries(sliceTable(view.detail?.profitLoss, 8), 8)
+  const quarterlyChart = buildChartSeries(sliceTable(view.detail?.quarters, 8), 8, { borrowings: view.detail?.balanceSheet })
+  const annualChart = buildChartSeries(sliceTable(view.detail?.profitLoss, 8), 8, { borrowings: view.detail?.balanceSheet })
   const quartersTable = sliceTable(view.detail?.quarters, 7)
   const annualTable = sliceTable(view.detail?.profitLoss, 6)
   const cashFlowTable = sliceTable(view.detail?.cashFlow, 6)
+  const balanceSheetTable = sliceTable(view.detail?.balanceSheet, 8)
 
   const shareholding = view.detail?.shareholding.quarterly ?? null
   const shareCategories = [
@@ -782,6 +819,10 @@ export default async function StockPage({ params, searchParams }: Props) {
               <CashFlowTrend profitLoss={view.detail?.profitLoss} cashFlow={view.detail?.cashFlow} />
             </Card>
           </section>
+
+          <Card title="Balance Sheet (₹ Cr)" id="balance-sheet">
+            <FinancialTable table={balanceSheetTable} />
+          </Card>
 
           <Card title="Peer Comparison" id="peers" className="mb-2">
             <PeerComparison view={view} />

@@ -7,6 +7,28 @@ function fmt(value: number): string {
   return Number.isFinite(value) ? value.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'
 }
 
+/** Split a series into polyline point-strings, breaking wherever a value is missing. */
+function lineSegments(
+  values: (number | null)[],
+  xFor: (index: number) => number,
+  yFor: (value: number) => number,
+): string[] {
+  const segments: string[] = []
+  let current: string[] = []
+  values.forEach((value, index) => {
+    if (value == null || !Number.isFinite(value)) {
+      if (current.length) {
+        segments.push(current.join(' '))
+        current = []
+      }
+      return
+    }
+    current.push(`${xFor(index)},${yFor(value)}`)
+  })
+  if (current.length) segments.push(current.join(' '))
+  return segments
+}
+
 /**
  * A fixed readout panel rendered BELOW the plot (never overlaying it). Shows the
  * values for one period in a compact two-column layout with a stable height, so
@@ -25,7 +47,7 @@ function PointReadout({ chart, index, selected }: { chart: ChartSeries; index: n
           <tbody>
             {chart.series.map((entry) => {
               const value = entry.values[index]
-              const ok = Number.isFinite(value)
+              const numeric = value != null && Number.isFinite(value) ? value : null
               return (
                 <tr key={entry.name} className="border-t border-[#152035] first:border-0">
                   <td className="py-1 pr-3 text-slate-300">
@@ -35,7 +57,7 @@ function PointReadout({ chart, index, selected }: { chart: ChartSeries; index: n
                     </span>
                   </td>
                   <td className="py-1 text-right font-mono font-semibold tabular-nums whitespace-nowrap text-white">
-                    {ok ? `₹ ${fmt(value)} Cr` : '—'}
+                    {numeric != null ? `₹ ${fmt(numeric)} Cr` : '—'}
                   </td>
                 </tr>
               )
@@ -69,7 +91,10 @@ export function QuarterlyBarChart({ chart }: { chart: ChartSeries | null }) {
   const [active, setActive] = useState<number | null>(null)
   if (!chart) return <p className="flex h-44 items-center justify-center text-xs text-slate-500">Quarterly data not available.</p>
 
-  const max = Math.max(...chart.series.flatMap((entry) => entry.values), 1)
+  const max = Math.max(
+    ...chart.series.flatMap((entry) => entry.values).filter((value): value is number => value != null && Number.isFinite(value)),
+    1,
+  )
   const selectedIndex = active ?? Math.max(chart.columns.length - 1, 0)
   return (
     <div>
@@ -84,13 +109,17 @@ export function QuarterlyBarChart({ chart }: { chart: ChartSeries | null }) {
             aria-label={`${column} data`}
             className="flex h-full flex-1 items-end justify-center gap-0.5 rounded-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500"
           >
-            {chart.series.map((entry) => (
-              <div
-                key={entry.name}
-                className={`w-2 rounded-t-sm transition-opacity ${active == null || active === index ? 'opacity-100' : 'opacity-40'}`}
-                style={{ height: `${Math.max((entry.values[index] / max) * 100, 1)}%`, background: entry.color }}
-              />
-            ))}
+            {chart.series.map((entry) => {
+              const value = entry.values[index]
+              if (value == null || !Number.isFinite(value)) return null
+              return (
+                <div
+                  key={entry.name}
+                  className={`w-2 rounded-t-sm transition-opacity ${active == null || active === index ? 'opacity-100' : 'opacity-40'}`}
+                  style={{ height: `${Math.max((value / max) * 100, 1)}%`, background: entry.color }}
+                />
+              )
+            })}
           </button>
         ))}
       </div>
@@ -109,7 +138,9 @@ export function ProfitLineChart({ chart }: { chart: ChartSeries | null }) {
   const [active, setActive] = useState<number | null>(null)
   if (!chart) return <p className="flex h-44 items-center justify-center text-xs text-slate-500">Annual data not available.</p>
 
-  const all = chart.series.flatMap((entry) => entry.values)
+  const all = chart.series
+    .flatMap((entry) => entry.values)
+    .filter((value): value is number => value != null && Number.isFinite(value))
   const maxV = Math.max(...all, 1)
   const minV = Math.min(...all, 0)
   const range = maxV - minV || 1
@@ -125,10 +156,14 @@ export function ProfitLineChart({ chart }: { chart: ChartSeries | null }) {
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-40 w-full" onMouseLeave={() => setActive(null)}>
         {chart.series.map((entry) => (
           <g key={entry.name}>
-            <polyline fill="none" stroke={entry.color} strokeWidth="2" points={entry.values.map((value, index) => `${xFor(index)},${yFor(value)}`).join(' ')} />
-            {entry.values.map((value, index) => (
-              <circle key={index} cx={xFor(index)} cy={yFor(value)} r={active === index ? 3.2 : 2.4} fill={entry.color} />
+            {lineSegments(entry.values, xFor, yFor).map((points, segment) => (
+              <polyline key={segment} fill="none" stroke={entry.color} strokeWidth="2" points={points} />
             ))}
+            {entry.values.map((value, index) =>
+              value == null || !Number.isFinite(value) ? null : (
+                <circle key={index} cx={xFor(index)} cy={yFor(value)} r={active === index ? 3.2 : 2.4} fill={entry.color} />
+              ),
+            )}
           </g>
         ))}
         {chart.columns.map((_, index) => (

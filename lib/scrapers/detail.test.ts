@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deriveFundamentals } from './resolve'
 import { findRow, latestRowNumber, parsePeers, parseScreenerDetail } from './screener-detail'
+import type { DetailTable } from './screener-detail'
 import {
   buildBadges,
   buildChartSeries,
@@ -156,6 +157,36 @@ describe('stock-detail helpers', () => {
     const chart = buildChartSeries(detail.profitLoss)
     expect(chart?.columns).toEqual(['Mar 2024', 'Mar 2025'])
     expect(chart?.series[0].values).toEqual([2620, 3203])
+  })
+
+  it('overlays borrowings from the balance sheet on matching periods', () => {
+    const pnl: DetailTable = {
+      columns: ['Mar 2024', 'Mar 2025', 'Mar 2026'],
+      rows: [
+        { label: 'Sales', values: ['100', '200', '300'] },
+        { label: 'Net Profit', values: ['10', '20', '30'] },
+      ],
+    }
+    const balance: DetailTable = {
+      columns: ['Mar 2023', 'Mar 2024', 'Mar 2025', 'Mar 2026'],
+      rows: [{ label: 'Borrowings +', values: ['5', '8', '9', '40'] }],
+    }
+    const chart = buildChartSeries(pnl, 8, { borrowings: balance })
+    expect(chart?.series.map((entry) => entry.name)).toEqual(['Sales', 'Op. Profit', 'Net Profit', 'Borrowings'])
+    expect(chart?.series[3].values).toEqual([8, 9, 40])
+  })
+
+  it('leaves borrowings blank on periods the balance sheet does not cover', () => {
+    const quarters: DetailTable = {
+      columns: ['Sep 2024', 'Mar 2025', 'Sep 2025', 'Mar 2026'],
+      rows: [{ label: 'Sales', values: ['1', '2', '3', '4'] }],
+    }
+    const balance: DetailTable = {
+      columns: ['Mar 2025', 'Mar 2026'],
+      rows: [{ label: 'Borrowings', values: ['33', '261'] }],
+    }
+    const chart = buildChartSeries(quarters, 8, { borrowings: balance })
+    expect(chart?.series.at(-1)?.values).toEqual([null, 33, null, 261])
   })
 
   it('derives badges from the metrics', () => {    const badges = buildBadges({ upside: -23.6, salesYoy: 10, profitYoy: 197, roce: 21.6, debtToEquity: 0.4 })
