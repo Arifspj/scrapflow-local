@@ -37,6 +37,8 @@ export type ResultsImportReport = {
   uniqueCompanies: number
   duplicatesSkipped: number
   limitReached: boolean
+  /** True when the source returned its sign-in page instead of the listing. */
+  authRequired: boolean
   status: ResultsImportStatus
   warnings: string[]
   startedAt: string
@@ -72,6 +74,7 @@ export async function collectScreenerResults(
     uniqueCompanies: 0,
     duplicatesSkipped: 0,
     limitReached: false,
+    authRequired: false,
     status: 'failed',
     warnings: [],
     startedAt: startedAt.toISOString(),
@@ -91,6 +94,7 @@ export async function collectScreenerResults(
   firstPage = parseScreenerResultsPage(firstHtml)
   report.totalResults = firstPage.totalResults
   report.pagesDiscovered = firstPage.totalPages
+  report.authRequired = firstPage.authRequired
   report.warnings.push(...firstPage.warnings)
   report.pagesFetched = 1
   allRows.push(...firstPage.rows)
@@ -129,7 +133,9 @@ export async function collectScreenerResults(
   report.duplicatesSkipped = qualified.length - bySymbol.size
   report.uniqueCompanies = bySymbol.size
 
-  if (report.pagesFetched === 0) {
+  if (report.authRequired) {
+    report.status = 'failed'
+  } else if (report.pagesFetched === 0) {
     report.status = 'failed'
   } else if (report.limitReached) {
     report.status = 'limit-reached'

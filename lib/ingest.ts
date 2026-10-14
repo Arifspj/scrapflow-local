@@ -9,7 +9,7 @@ import { collectScreenerResults, type ResultsImportStatus } from '@/lib/results-
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import type { IpoMetrics } from '@/lib/scrapers/screener-ipo'
 import { SCREENER_RESULTS_PARSER_VERSION } from '@/lib/scrapers/screener-results'
-import { screenerFetchPolite } from '@/lib/scrapers/screener-auth'
+import { hasScreenerCredentials, screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
 import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
 import { CHARTINK_PARSER_VERSION, fetchChartinkScan } from '@/lib/scrapers/chartink'
@@ -153,6 +153,21 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
     const { symbols, report } = await collectScreenerResults(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: listPageLimit(), delayMs: 120 })
     const rows = symbols.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
     const scanned = report.rowsParsed
+    if (report.authRequired) {
+      return {
+        ok: false,
+        kind,
+        kindLabel: KIND_TO_LABEL[kind],
+        status: 200,
+        stopped: false,
+        symbolCount: 0,
+        rows: [],
+        warnings: report.warnings,
+        message: hasScreenerCredentials()
+          ? 'Screener.in returned its sign-in page — the saved session was rejected. Confirm SCREENER_EMAIL / SCREENER_PASSWORD still sign in, then redeploy.'
+          : 'This source needs a screener.in login. Set SCREENER_EMAIL and SCREENER_PASSWORD (Production), then redeploy.',
+      }
+    }
     return {
       ok: symbols.length > 0,
       kind,
@@ -545,7 +560,9 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         }
       } else {
         status = 'FAILED'
-        errorSummary = report.pagesFetched > 0 ? 'No all-green quarterly results were parsed from this source.' : 'No pages could be fetched from the results listing.'
+        errorSummary = report.authRequired
+          ? 'Screener.in returned its sign-in page — the latest-results listing needs a signed-in session (SCREENER_EMAIL / SCREENER_PASSWORD).'
+          : report.pagesFetched > 0 ? 'No all-green quarterly results were parsed from this source.' : 'No pages could be fetched from the results listing.'
       }
     } else if (kind === 'chartink-scan') {
       const result = await fetchChartinkScan(source.url)

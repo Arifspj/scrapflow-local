@@ -7,6 +7,7 @@ import {
   resultsPageUrl,
   symbolFromResultsHref,
 } from './screener-results'
+import { isScreenerAuthPage } from './screener-auth'
 
 type Trends = { sales: string; ebidt: string; netProfit: string; eps: string }
 
@@ -108,5 +109,27 @@ describe('pagination helpers', () => {
 
   it('builds a ?p= page URL from the base', () => {
     expect(resultsPageUrl('https://www.screener.in/results/latest/', 2)).toBe('https://www.screener.in/results/latest/?p=2')
+  })
+})
+
+const AUTH_PAGE =
+  '<!doctype html><html><head><title>Register - Screener</title></head><body>' +
+  '<form action="/register/" method="post"><input name="csrfmiddlewaretoken" value="x"><input id="id_password"></form>' +
+  '<a href="/login/">Already have an account</a></body></html>'
+
+describe('isScreenerAuthPage', () => {
+  it('flags the sign-in / register page but not a real listing', () => {
+    expect(isScreenerAuthPage(AUTH_PAGE)).toBe(true)
+    expect(isScreenerAuthPage(page([card('AAA', 'Aaa Ltd', ALL_UP)], 1))).toBe(false)
+    expect(isScreenerAuthPage('')).toBe(false)
+  })
+})
+
+describe('auth-required results pages', () => {
+  it('reports authRequired and an actionable warning instead of "no cards"', () => {
+    const result = parseScreenerResultsPage(AUTH_PAGE)
+    expect(result.authRequired).toBe(true)
+    expect(result.rows).toHaveLength(0)
+    expect(result.warnings.join(' ')).toMatch(/sign-in page/i)
   })
 })

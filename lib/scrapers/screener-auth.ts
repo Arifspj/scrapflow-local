@@ -27,6 +27,22 @@ export function hasScreenerCredentials(): boolean {
 }
 
 /**
+ * True when the HTML is screener.in's sign-in / register page rather than the
+ * page that was requested. Screener redirects an anonymous request for a
+ * login-gated page (e.g. `/results/latest/`) to `/register/?next=…`, so a fetch
+ * that silently lost its session lands here instead of returning real content.
+ */
+export function isScreenerAuthPage(html: string): boolean {
+  if (!html) return false
+  if (/data-sales/i.test(html)) return false
+  return (
+    /<\s*title[^>]*>\s*(?:register|login)\b[^<]*screener/i.test(html) ||
+    /already have an account/i.test(html) ||
+    /action="\/(?:register|login)\b/i.test(html)
+  )
+}
+
+/**
  * Sign in to screener.in using the credentials in the environment and return a
  * session cookie string. Returns null when credentials are missing or the login
  * form/flow changed. The session is reused across requests (see getScreenerCookie).

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import { cleanSymbol } from './screener'
+import { isScreenerAuthPage } from './screener-auth'
 import type { ParseResult, ParsedSymbol } from './types'
 
 export const SCREENER_BASE = 'https://www.screener.in'
@@ -47,6 +48,8 @@ export type ResultPage = {
   totalPages: number | null
   totalResults: number | null
   rows: ResultCompanyRow[]
+  /** True when the fetched HTML is screener.in's sign-in page, not the listing. */
+  authRequired: boolean
   warnings: string[]
 }
 
@@ -158,11 +161,16 @@ export function parseResultsCount(html: string): number | null {
 export function parseScreenerResultsPage(html: string): ResultPage {
   const $ = cheerio.load(html)
   const { rows, warnings } = parseRows($)
+  const authRequired = isScreenerAuthPage(html)
+  if (authRequired && !rows.length) {
+    warnings.length = 0
+    warnings.push('Screener.in returned its sign-in page — the latest-results listing needs an authenticated session (SCREENER_EMAIL / SCREENER_PASSWORD).')
+  }
   const totalResults = parseResultsCount(html)
   const linkedMax = discoverResultsPages(html).reduce((max, page) => Math.max(max, page), 1)
   const fromCount = totalResults != null ? Math.ceil(totalResults / RESULTS_PAGE_SIZE) : null
   const totalPages = fromCount != null ? Math.max(fromCount, 1) : linkedMax
-  return { totalPages, totalResults, rows, warnings }
+  return { totalPages, totalResults, rows, authRequired, warnings }
 }
 
 /** Append (or replace) the `?p=` query parameter on a results listing URL. */
