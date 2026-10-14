@@ -40,6 +40,14 @@ describe('classifyLabel', () => {
     expect(classifyLabel('Equity Capital')).toEqual({ category: 'unknown', direction: 'higher-better' })
     expect(classifyLabel('CWIP')).toEqual({ category: 'unknown', direction: 'higher-better' })
   })
+
+  it('flags operating/net/free cash flow as higher-better and leaves investing/financing neutral', () => {
+    expect(classifyLabel('Cash from Operating Activity')).toEqual({ category: 'cashflow', direction: 'higher-better' })
+    expect(classifyLabel('Net Cash Flow')).toEqual({ category: 'cashflow', direction: 'higher-better' })
+    expect(classifyLabel('Free Cash Flow')).toEqual({ category: 'cashflow', direction: 'higher-better' })
+    expect(classifyLabel('Cash from Investing Activity')).toEqual({ category: 'unknown', direction: 'higher-better' })
+    expect(classifyLabel('Cash from Financing Activity')).toEqual({ category: 'unknown', direction: 'higher-better' })
+  })
 })
 
 describe('financialCellTrend', () => {
@@ -70,6 +78,18 @@ describe('financialCellTrend', () => {
 
   it('greens falling borrowings (deleveraging)', () => {
     const t = table(['Mar 2025', 'Mar 2026'], [['Borrowings', ['100', '60']]])
+    expect(financialCellTrend(t, t.rows[0], 1).tone).toBe('good')
+  })
+
+  it('greens rising operating cash flow and reddens a decline', () => {
+    const up = table(['Mar 2025', 'Mar 2026'], [['Cash from Operating Activity', ['130', '160']]])
+    expect(financialCellTrend(up, up.rows[0], 1).tone).toBe('good')
+    const down = table(['Mar 2025', 'Mar 2026'], [['Cash from Operating Activity', ['160', '90']]])
+    expect(financialCellTrend(down, down.rows[0], 1).tone).toBe('bad')
+  })
+
+  it('greens an operating cash-flow turnaround from negative to positive', () => {
+    const t = table(['Mar 2025', 'Mar 2026'], [['Cash from Operating Activity', ['-27', '30']]])
     expect(financialCellTrend(t, t.rows[0], 1).tone).toBe('good')
   })
 

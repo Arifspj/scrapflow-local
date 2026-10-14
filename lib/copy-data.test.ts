@@ -147,10 +147,12 @@ describe('buildCopyMarkdown', () => {
     expect(markdown).toContain('[link](/market/IN06/IN0601/IN060101/IN060101001/)')
   })
 
-  it('includes quarterly/annual/cash flow/shareholding with reporting periods', () => {
+  it('includes quarterly/annual/cash flow/balance sheet/shareholding with reporting periods', () => {
     expect(markdown).toContain('## Quarterly Results')
     expect(markdown).toContain('## Annual Profit & Loss')
     expect(markdown).toContain('## Cash Flow Statement')
+    expect(markdown).toContain('## Balance Sheet')
+    expect(markdown).toContain('Borrowings | 300 | 250')
     expect(markdown).toContain('| Category | Jun 2025 | Mar 2025 |')
   })
 

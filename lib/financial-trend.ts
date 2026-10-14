@@ -26,7 +26,7 @@ export const TREND_CONFIG = {
   interestPressurePct: 3,
 } as const
 
-export type TrendCategory = 'growth' | 'expense' | 'interest' | 'balance' | 'unknown'
+export type TrendCategory = 'growth' | 'expense' | 'interest' | 'balance' | 'cashflow' | 'unknown'
 
 const INTEREST_LABEL = /interest|finance costs?/i
 const EXPENSE_LABEL =
@@ -38,12 +38,15 @@ const MARGIN_LABEL = /opm|operating margin|\% margin|roce|roe/i
 const BALANCE_LOWER_LABEL = /^borrowings|^debt|other liabilities|trade payables|creditors/i
 /** Balance-sheet strength/growth: more is better for an investor. */
 const BALANCE_HIGHER_LABEL = /^reserves|total assets|^investments|fixed assets|net worth|shareholders? funds/i
+/** Cash-flow strength: rising operating / net / free cash flow is favourable. */
+const CASHFLOW_HIGHER_LABEL = /cash from operating|cash from operations|operating cash flow|^net cash flow|free cash flow/i
 
 export function classifyLabel(label: string): { category: TrendCategory; direction: 'higher-better' | 'lower-better' } {
   const trimmed = label.toLowerCase().trim()
   if (INTEREST_LABEL.test(trimmed)) return { category: 'interest', direction: 'lower-better' }
   if (EXPENSE_LABEL.test(trimmed)) return { category: 'expense', direction: 'lower-better' }
   if (GROWTH_LABEL.test(trimmed) || MARGIN_LABEL.test(trimmed)) return { category: 'growth', direction: 'higher-better' }
+  if (CASHFLOW_HIGHER_LABEL.test(trimmed)) return { category: 'cashflow', direction: 'higher-better' }
   if (BALANCE_LOWER_LABEL.test(trimmed)) return { category: 'balance', direction: 'lower-better' }
   if (BALANCE_HIGHER_LABEL.test(trimmed)) return { category: 'balance', direction: 'higher-better' }
   return { category: 'unknown', direction: 'higher-better' }

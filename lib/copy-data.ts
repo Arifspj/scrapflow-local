@@ -238,6 +238,9 @@ export function buildCopyMarkdown(view: StockView, prompt?: Pick<CopyPromptTempl
   lines.push('')
   lines.push('## Cash Flow Statement (₹ Cr — source; each column is a reporting period)')
   lines.push(tableMarkdown(view.detail?.cashFlow, 7))
+  lines.push('')
+  lines.push('## Balance Sheet (₹ Cr — source; each column is a reporting period)')
+  lines.push(tableMarkdown(view.detail?.balanceSheet, 7))
 
   // Shareholding
   lines.push('')
