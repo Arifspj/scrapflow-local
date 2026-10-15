@@ -319,10 +319,11 @@ function reportStatusToFetchRun(status: MarketImportReport['status'] | ScreenImp
 const MAX_NUMERIC_LOOKUPS = 8
 
 /**
- * Replace numeric warehouse codes with their canonical ticker when the company
- * name resolves to one. Codes that cannot be resolved are dropped with a warning
- * so an invented ticker is never persisted. Lookups are capped so a listing full
- * of BSE codes cannot exhaust the invocation budget.
+ * Upgrade numeric warehouse codes to their canonical ticker when the company
+ * name resolves to one; otherwise keep the member under its numeric code so a
+ * BSE/SME row is never silently lost. Lookups are bounded so a listing full of
+ * codes cannot exhaust the invocation budget, and an invented ticker is never
+ * persisted (a code is kept verbatim, never fabricated).
  */
 async function resolveNumericMembers<T extends { symbol: string; companyName: string | null }>(
   items: T[],
@@ -331,20 +332,28 @@ async function resolveNumericMembers<T extends { symbol: string; companyName: st
 ): Promise<T[]> {
   const resolvedItems: T[] = []
   let lookups = 0
+  let keptAsCode = 0
   for (const item of items) {
     if (!isNumericCode(item.symbol)) {
       resolvedItems.push(item)
       continue
     }
     const name = item.companyName
-    if (name == null || lookups >= maxLookups) {
-      warnings.push(`Skipped numeric security code ${item.symbol}${name ? ` (${name})` : ''}: no ticker could be established.`)
-      continue
+    if (name && lookups < maxLookups) {
+      lookups += 1
+      const resolved = await resolveSymbolFromName(name).catch(() => null)
+      if (resolved) {
+        resolvedItems.push({ ...item, symbol: resolved })
+        continue
+      }
     }
-    lookups += 1
-    const resolved = await resolveSymbolFromName(name).catch(() => null)
-    if (resolved) resolvedItems.push({ ...item, symbol: resolved })
-    else warnings.push(`Skipped numeric security code ${item.symbol} (${name}): no ticker could be established.`)
+    // No listed ticker could be established; keep the member under its numeric
+    // source code (flagged as unresolved in the UI) instead of dropping it.
+    resolvedItems.push(item)
+    keptAsCode += 1
+  }
+  if (keptAsCode) {
+    warnings.push(`Kept ${keptAsCode} member(s) under their numeric source code (no listed ticker was found).`)
   }
   return resolvedItems
 }
