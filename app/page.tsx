@@ -67,7 +67,6 @@ export default async function HomePage({ searchParams }: Props) {
 
   return (
     <main className="min-h-screen bg-[#050b14] text-slate-300 antialiased">
-      <AutoRefresh />
       <ScrollToTop />
       <header className="sticky top-0 z-20 border-b border-[#122238] bg-[#071120]/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1720px] items-center justify-between gap-4 px-4 py-3">
@@ -116,6 +115,7 @@ export default async function HomePage({ searchParams }: Props) {
           </>
         ) : (
           <>
+            <AutoRefresh />
             <section className="grid items-end gap-4 lg:grid-cols-12">
               <div className="lg:col-span-4">
                 <p className="text-xs font-semibold uppercase tracking-[.2em] text-sky-400">{scanner?.category || 'Public scanner'}</p>

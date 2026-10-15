@@ -146,6 +146,19 @@ export type OpportunityDashboard = {
   multibaggerMeta: MultibaggerMeta
 }
 
+/**
+ * The dashboard as the homepage actually renders it. `rows` holds every stock
+ * with a snapshot (thousands) and is only used server-side to build the
+ * sections, so it is dropped before the data is serialized to the client view or
+ * sent over the in-place refresh endpoint.
+ */
+export type OpportunityDashboardView = Omit<OpportunityDashboard, 'rows'>
+
+export function toDashboardView({ rows, ...view }: OpportunityDashboard): OpportunityDashboardView {
+  void rows
+  return view
+}
+
 function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | null; industry: string | null } {
   const links = view.industry ?? []
   const broad = links[0] ?? null
