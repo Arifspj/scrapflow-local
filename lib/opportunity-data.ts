@@ -3,11 +3,11 @@ import { prisma } from '@/lib/prisma'
 import { buildStockView, type StockView } from '@/lib/stock-detail'
 import { computeOpportunity, isFinancialIndustry, opportunityInputFromView } from '@/lib/opportunity'
 import {
-  computeMultibagger,
+  computeMultibaggerV2,
   multibaggerInputFromView,
   shortlistEligible,
+  MULTIBAGGER_CURRENT_VERSION,
   MULTIBAGGER_MIN_COVERAGE,
-  MULTIBAGGER_VERSION,
   type MultiMember,
   type MetricHistoryDelta,
   type MultibaggerContext,
@@ -208,7 +208,7 @@ function toRow(stock: StockForRow, view: StockView): OpportunityRow {
     movement: null,
     // Provisional: recomputed in buildDashboard once this stock's scanner
     // memberships and cross-run metric history have been loaded.
-    multibagger: computeMultibagger(
+    multibagger: computeMultibaggerV2(
       multibaggerInputFromView(view, { isFinancial, memberships: [], ownership, history: null }),
     ),
   }
@@ -327,7 +327,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
       ownership: row.ownership,
       history: window?.history ?? null,
     }
-    row.multibagger = computeMultibagger(multibaggerInputFromView(view, context))
+    row.multibagger = computeMultibaggerV2(multibaggerInputFromView(view, context))
   }
 
   const rows = rowsWithId.map((entry) => entry.row)
@@ -418,7 +418,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     sectors,
     multibagger,
     multibaggerMeta: {
-      version: MULTIBAGGER_VERSION,
+      version: MULTIBAGGER_CURRENT_VERSION,
       minCoverage: MULTIBAGGER_MIN_COVERAGE,
       evaluable: rows.filter((row) => row.multibagger.normalized != null).length,
       candidates: rows.filter((row) => row.multibagger.candidate).length,

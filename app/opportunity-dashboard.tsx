@@ -308,7 +308,11 @@ function mbPartCell(part: MultibaggerPart | null): OppCell {
     .filter((sub) => sub.value != null)
     .map((sub) => `${sub.label} ${Math.round(sub.score)}%`)
     .join(', ')
-  return { text: `${ratio}%`, tone, title: `${part.label}: ${part.earned}/${part.max} pts.${detail ? ` ${detail}.` : ''}` }
+  return {
+    text: `${ratio}% (${part.presentCount}/${part.totalCount})`,
+    tone,
+    title: `${part.label}: ${part.earned}/${part.max} pts from ${part.presentCount} of ${part.totalCount} inputs (${part.subCoveragePct}% of this component has data).${detail ? ` Inputs: ${detail}.` : ''}`,
+  }
 }
 
 function mbScoreCell(row: OpportunityRow): OppCell {
@@ -333,7 +337,7 @@ function mbCoverageCell(row: OpportunityRow): OppCell {
   return {
     text: `${coverage}%`,
     tone: coverage >= 60 ? 'neutral' : 'warn',
-    title: 'Share of the seven-component model with data. A missing metric lowers coverage and never counts as positive evidence.',
+    title: 'Evidence-weighted coverage: the share of the seven-component model whose inputs actually carry data (each component counts only its present inputs). A missing metric lowers coverage and never counts as positive evidence.',
   }
 }
 
@@ -595,9 +599,12 @@ export async function OpportunityDashboard() {
         <div className="border-b border-[#0f1f33] bg-[#0a1728] px-4 py-2 text-[10px] leading-5 text-slate-500">
           A separate composite (v{data.multibaggerMeta.version}) over seven components: earnings acceleration (25), business quality &amp; ROCE
           trend (20), cash flow &amp; balance sheet (15), valuation &amp; margin of safety (15), scanner confluence &amp; fresh entry (10), small-base
-          potential (10) and ownership trend (5). A score appears only once at least {data.multibaggerMeta.minCoverage}% of the model has data;
-          missing metrics never count as positive. Small market cap is treated as room to grow, not a signal on its own, and scanner confluence
-          counts independent scanner <i>categories</i>, not correlated scans. No price/volume history is stored, so this is not a technical
+          potential (10) and ownership trend (5). v2 counts evidence honestly: each component contributes only the share of its inputs that
+          actually carry data, so one available metric can never make a whole component look fully evidenced (the number in brackets under a
+          component is that component&apos;s input coverage, e.g. <span className="text-slate-400">2/4 inputs</span>). A score appears only once at
+          least {data.multibaggerMeta.minCoverage}% of the evidence-weighted model has data. Small market cap is capped — it is room to grow,
+          never a signal on its own — and fresh-entry credit is withheld until at least two independent scanner <i>categories</i> corroborate.
+          Missing metrics are shown as unevaluated, never as positive or negative. No price/volume history is stored, so this is not a technical
           pre-rally confirmation. Companion to the sections above — the Opportunity Score, classic score and scanner tables are unchanged.
         </div>
         <OppTable

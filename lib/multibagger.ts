@@ -40,6 +40,43 @@ export const MULTIBAGGER_WEIGHTS = {
 
 export type MultibaggerComponentKey = keyof typeof MULTIBAGGER_WEIGHTS
 
+// ---------------------------------------------------------------------------
+// v2 — evidence-weighted research model.
+//
+// v2 keeps the same seven components and weights as v1, but corrects how
+// evidence is *counted* rather than fabricating precision:
+//   - a component's maximum is scaled by the share of its inputs that actually
+//     carry data, so one present metric can never make a whole component look
+//     fully evidenced (v1 gave the component its full weight regardless);
+//   - small-base potential is capped (a small market cap is room to grow, never
+//     a signal by itself) and can no longer earn a full score;
+//   - scanner confluence no longer hands near-full credit to a single scanner or
+//     to a lone recent import: category credit is lower and recency only counts
+//     when at least two independent scanner categories corroborate.
+// ---------------------------------------------------------------------------
+
+export const MULTIBAGGER_VERSION_2 = 2
+
+/** The version the live dashboard shows. v1 stays available and reproducible. */
+export const MULTIBAGGER_CURRENT_VERSION = MULTIBAGGER_VERSION_2
+
+/** v2 deliberately keeps the v1 weights; only evidence scaling and caps changed. */
+export const MULTIBAGGER_WEIGHTS_V2 = {
+  earningsAcceleration: 25,
+  businessQuality: 20,
+  cashAndBalanceSheet: 15,
+  valuation: 15,
+  scannerConfluence: 10,
+  smallBase: 10,
+  ownership: 5,
+} as const
+
+/** v2 confluence: a single category is weak corroboration on its own. */
+const CONFLUENCE_POINTS_V2: [number, number][] = [[0, 0], [1, 20], [2, 60], [3, 85], [4, 100]]
+
+/** v2 small base: capped at 50 so small size alone is never a strong score. */
+const SMALL_BASE_POINTS_V2: [number, number][] = [[50, 50], [250, 45], [1000, 35], [5000, 25], [20000, 12], [100000, 4]]
+
 export type MultiMember = { scannerId: string; category: string; firstSeenAt: Date; lastSeenAt: Date }
 
 export type MetricHistoryDelta = {
@@ -102,6 +139,11 @@ export type MultibaggerPart = {
   evaluated: boolean
   sub: MultibaggerSubMetric[]
   note: string | null
+  /** Share of this component's inputs that carry data (0–100). */
+  subCoveragePct: number
+  /** Inputs with data out of the component's total inputs. */
+  presentCount: number
+  totalCount: number
 }
 
 export type MultibaggerResult = {
@@ -169,11 +211,37 @@ function partFrom(
 ): MultibaggerPart {
   const weight = MULTIBAGGER_WEIGHTS[key]
   const present = sub.filter((item) => item.value != null)
-  if (!present.length) {
-    return { key, label, weight, earned: 0, max: 0, evaluated: false, sub, note: note ?? 'No data available.' }
+  const totalCount = sub.length
+  const presentCount = present.length
+  if (!presentCount) {
+    return {
+      key,
+      label,
+      weight,
+      earned: 0,
+      max: 0,
+      evaluated: false,
+      sub,
+      note: note ?? 'No data available.',
+      subCoveragePct: 0,
+      presentCount: 0,
+      totalCount,
+    }
   }
-  const mean = present.reduce((sum, item) => sum + item.score, 0) / present.length
-  return { key, label, weight, earned: round1(mean * (weight / 100)), max: weight, evaluated: true, sub, note }
+  const mean = present.reduce((sum, item) => sum + item.score, 0) / presentCount
+  return {
+    key,
+    label,
+    weight,
+    earned: round1(mean * (weight / 100)),
+    max: weight,
+    evaluated: true,
+    sub,
+    note,
+    subCoveragePct: Math.round((presentCount / totalCount) * 100),
+    presentCount,
+    totalCount,
+  }
 }
 
 function componentParts(input: MultibaggerInput): MultibaggerPart[] {
@@ -279,6 +347,159 @@ export function computeMultibagger(input: MultibaggerInput, now: Date = new Date
   const candidate = normalized != null && (earningsEvaluated || qualityEvaluated)
   return {
     version: MULTIBAGGER_VERSION,
+    earned,
+    evaluatedMax,
+    normalized,
+    coveragePct,
+    candidate,
+    parts,
+    reasons: reasonsFrom(parts),
+    calculatedAt: now.toISOString(),
+  }
+}
+
+/**
+ * v2 component builder. Mirrors the v1 curves for the fundamental components but
+ * scales each component's maximum by the share of its inputs that carry data,
+ * caps small-base points, and makes scanner confluence corroboration-gated.
+ */
+function partFromV2(
+  key: MultibaggerComponentKey,
+  label: string,
+  sub: MultibaggerSubMetric[],
+  note: string | null,
+): MultibaggerPart {
+  const weight = MULTIBAGGER_WEIGHTS_V2[key]
+  const totalCount = sub.length
+  const present = sub.filter((item) => item.value != null)
+  const presentCount = present.length
+  if (!presentCount) {
+    return {
+      key,
+      label,
+      weight,
+      earned: 0,
+      max: 0,
+      evaluated: false,
+      sub,
+      note: note ?? 'No data available.',
+      subCoveragePct: 0,
+      presentCount: 0,
+      totalCount,
+    }
+  }
+  const perSub = weight / totalCount
+  const earned = round1(present.reduce((sum, item) => sum + item.score * (perSub / 100), 0))
+  const max = round1(perSub * presentCount)
+  return {
+    key,
+    label,
+    weight,
+    earned,
+    max,
+    evaluated: true,
+    sub,
+    note,
+    subCoveragePct: Math.round((presentCount / totalCount) * 100),
+    presentCount,
+    totalCount,
+  }
+}
+
+function componentPartsV2(input: MultibaggerInput): MultibaggerPart[] {
+  const history = input.history
+
+  const earnings = partFromV2(
+    'earningsAcceleration',
+    'Earnings acceleration',
+    [
+      { label: 'Profit acceleration', value: input.profitAccelerationPp, score: linear(input.profitAccelerationPp, ACCEL_POINTS) },
+      { label: 'Sales acceleration', value: input.salesAccelerationPp, score: linear(input.salesAccelerationPp, ACCEL_POINTS) },
+      { label: 'Profit YoY', value: growthPct(input.profitYoy), score: linear(growthPct(input.profitYoy), PROFIT_YOY_POINTS) },
+      { label: 'QoQ profit', value: growthPct(input.qoqProfitGrowth), score: linear(growthPct(input.qoqProfitGrowth), QOQ_POINTS) },
+    ],
+    'Needs comparable quarterly / annual results.',
+  )
+
+  const quality = partFromV2(
+    'businessQuality',
+    'Business quality & trend',
+    [
+      { label: 'ROCE', value: input.roce, score: linear(input.roce, ROCE_POINTS) },
+      { label: 'ROCE trend', value: input.roceTrendPp ?? history?.roceChange ?? null, score: linear(input.roceTrendPp ?? history?.roceChange ?? null, ROCE_TREND_POINTS) },
+      { label: 'ROE', value: input.roe, score: linear(input.roe, ROE_POINTS) },
+      { label: 'Margin trend', value: input.opmTrendPp, score: linear(input.opmTrendPp, OPM_TREND_POINTS) },
+    ],
+    'No profitability metrics available.',
+  )
+
+  const cashSub: MultibaggerSubMetric[] = [
+    { label: 'CFO / PAT', value: input.cfoPat, score: linear(input.cfoPat, CFO_PAT_POINTS) },
+    { label: 'CFO / PAT trend', value: history?.cfoPatChange ?? null, score: linear(history?.cfoPatChange ?? null, CFO_CHANGE_POINTS) },
+  ]
+  if (!input.isFinancial) {
+    cashSub.push({ label: 'Debt / Equity', value: input.debtToEquity, score: linear(input.debtToEquity, DEBT_EQUITY_POINTS) })
+  }
+  cashSub.push({ label: 'Borrowings trend', value: input.debtChangePct, score: linear(input.debtChangePct, DEBT_TREND_POINTS) })
+  const cashAndBalanceSheet = partFromV2('cashAndBalanceSheet', 'Cash flow & balance sheet', cashSub, 'No cash-flow or borrowings data available.')
+  if (input.isFinancial) cashAndBalanceSheet.note = 'Leverage rule relaxed for financials.'
+
+  const valuation = partFromV2(
+    'valuation',
+    'Valuation & margin of safety',
+    [
+      { label: 'Margin of safety', value: input.marginOfSafety, score: linear(input.marginOfSafety, MOS_POINTS) },
+      { label: 'P/E', value: input.pe, score: linear(input.pe, PE_POINTS) },
+    ],
+    'No P/E or fair-value comparison available.',
+  )
+
+  // Recency only corroborates when at least two independent scanner categories
+  // agree; a lone recent import in one scanner is not independent evidence.
+  const confluenceSub: MultibaggerSubMetric[] = [
+    {
+      label: 'Independent scanners',
+      value: input.scannerCategoryCount || (input.scannerMembershipCount ? 0 : null),
+      score: linear(input.scannerCategoryCount, CONFLUENCE_POINTS_V2),
+    },
+  ]
+  if (input.scannerCategoryCount >= 2) {
+    confluenceSub.push({ label: 'Fresh entry', value: input.daysSinceFirstSeen, score: linear(input.daysSinceFirstSeen, RECENCY_POINTS) })
+  }
+  const confluence = partFromV2('scannerConfluence', 'Scanner confluence', confluenceSub, 'Not present in any enabled scanner.')
+
+  const smallBase = partFromV2(
+    'smallBase',
+    'Small-base potential',
+    [{ label: 'Market cap', value: input.marketCap, score: linear(input.marketCap, SMALL_BASE_POINTS_V2) }],
+    'Market cap not available.',
+  )
+
+  const ownership = partFromV2(
+    'ownership',
+    'Ownership trend',
+    [
+      { label: 'Promoter Δ', value: input.promoterChangePp, score: linear(input.promoterChangePp, OWNERSHIP_POINTS) },
+      { label: 'FII Δ', value: input.fiiChangePp, score: linear(input.fiiChangePp, OWNERSHIP_POINTS) },
+      { label: 'DII Δ', value: input.diiChangePp, score: linear(input.diiChangePp, OWNERSHIP_POINTS) },
+    ],
+    'No comparable shareholding periods.',
+  )
+
+  return [earnings, quality, cashAndBalanceSheet, valuation, confluence, smallBase, ownership]
+}
+
+export function computeMultibaggerV2(input: MultibaggerInput, now: Date = new Date()): MultibaggerResult {
+  const parts = componentPartsV2(input)
+  const evaluatedMax = round1(parts.reduce((sum, part) => sum + part.max, 0))
+  const earned = round1(parts.reduce((sum, part) => sum + part.earned, 0))
+  const coveragePct = Math.round(evaluatedMax)
+  const normalized = evaluatedMax >= MULTIBAGGER_MIN_COVERAGE ? Math.round((earned / evaluatedMax) * 100) : null
+  const earningsEvaluated = parts.find((part) => part.key === 'earningsAcceleration')?.evaluated ?? false
+  const qualityEvaluated = parts.find((part) => part.key === 'businessQuality')?.evaluated ?? false
+  const candidate = normalized != null && (earningsEvaluated || qualityEvaluated)
+  return {
+    version: MULTIBAGGER_VERSION_2,
     earned,
     evaluatedMax,
     normalized,
