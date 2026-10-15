@@ -237,9 +237,10 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
 
   const rows = rowsWithId.map((entry) => entry.row)
 
-  // Rows whose identity is an unresolved numeric source id are never ranked or
-  // linked as if they were ordinary tickers (see lib/identity.ts).
-  const rankable = rows.filter((row) => !row.identity.numeric)
+  // Every row is rankable. Numeric BSE/SME codes are included in the opportunity
+  // lists; they render with an unresolved-identity note (see lib/identity.ts) so
+  // the code is never mistaken for a verified exchange ticker.
+  const rankable = rows
 
   const radar = rankable
     .filter((row) => row.coveragePct >= RADAR_MIN_COVERAGE)
