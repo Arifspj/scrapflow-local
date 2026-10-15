@@ -7,6 +7,7 @@ import {
 import type { GrowthReading } from '@/lib/growth-quality'
 import type { OwnershipHolding } from '@/lib/ownership'
 import type { SectorSummary } from '@/lib/sector-map'
+import { MULTIBAGGER_MIN_COVERAGE, type MultibaggerComponentKey, type MultibaggerPart } from '@/lib/multibagger'
 import { OppTable, type OppCell, type OppColumn, type OppRow, type OppTone } from './opp-table'
 
 const DASH = '—'
@@ -293,6 +294,93 @@ function ownershipRows(rows: OpportunityRow[]): OppRow[] {
   }))
 }
 
+function mbPart(row: OpportunityRow, key: MultibaggerComponentKey): MultibaggerPart | null {
+  return row.multibagger.parts.find((part) => part.key === key) ?? null
+}
+
+function mbPartCell(part: MultibaggerPart | null): OppCell {
+  if (!part || !part.evaluated || part.max === 0) {
+    return { text: DASH, tone: 'neutral', title: part ? part.note ?? 'Not evaluated for this stock.' : 'Not evaluated for this stock.' }
+  }
+  const ratio = Math.round((part.earned / part.max) * 100)
+  const tone: OppTone = ratio >= 70 ? 'good' : ratio >= 45 ? 'warn' : 'bad'
+  const detail = part.sub
+    .filter((sub) => sub.value != null)
+    .map((sub) => `${sub.label} ${Math.round(sub.score)}%`)
+    .join(', ')
+  return { text: `${ratio}%`, tone, title: `${part.label}: ${part.earned}/${part.max} pts.${detail ? ` ${detail}.` : ''}` }
+}
+
+function mbScoreCell(row: OpportunityRow): OppCell {
+  const mb = row.multibagger
+  if (mb.normalized == null) {
+    return {
+      text: 'Not evaluated',
+      tone: 'neutral',
+      title: `Insufficient data — only ${mb.coveragePct}% of the model has evidence (minimum ${MULTIBAGGER_MIN_COVERAGE}%).`,
+    }
+  }
+  const tone: OppTone = mb.normalized >= 70 ? 'good' : mb.normalized >= 50 ? 'warn' : 'bad'
+  return {
+    text: `${mb.normalized}`,
+    tone,
+    title: `Experimental v${mb.version} score. Covers ${mb.coveragePct}% of the model; ${mb.earned}/${mb.evaluatedMax} points.${mb.reasons.length ? ` Driven by: ${mb.reasons.join(', ')}.` : ''} Research weights, not a validated formula.`,
+  }
+}
+
+function mbCoverageCell(row: OpportunityRow): OppCell {
+  const coverage = row.multibagger.coveragePct
+  return {
+    text: `${coverage}%`,
+    tone: coverage >= 60 ? 'neutral' : 'warn',
+    title: 'Share of the seven-component model with data. A missing metric lowers coverage and never counts as positive evidence.',
+  }
+}
+
+function mbRiskCell(row: OpportunityRow): OppCell {
+  const ownershipRisk = (row.ownership?.signals ?? []).filter((signal) => /falling/i.test(signal))
+  const labels = [...row.flags.map((flag) => flag.label), ...ownershipRisk]
+  if (!labels.length) {
+    return { text: 'None noted', tone: 'neutral', title: 'No flagged cash-flow, leverage or profitability risk in the saved data.' }
+  }
+  const bad = row.flags.some((flag) => flag.severity === 'bad') || ownershipRisk.length > 0
+  const detail = [...row.flags.map((flag) => flag.detail), ...ownershipRisk].join(' ')
+  return { text: labels.join(' · '), tone: bad ? 'bad' : 'warn', title: detail }
+}
+
+const multibaggerColumns: OppColumn[] = [
+  { label: 'MB /100', align: 'right' },
+  { label: 'Coverage', align: 'right' },
+  { label: 'Earnings', align: 'right' },
+  { label: 'Quality', align: 'right' },
+  { label: 'Cash/BS', align: 'right' },
+  { label: 'Valuation', align: 'right' },
+  { label: 'Confluence', align: 'right' },
+  { label: 'Risk', text: true },
+  { label: 'Data as of', align: 'right' },
+]
+
+function multibaggerRows(rows: OpportunityRow[]): OppRow[] {
+  return rows.map((row) => ({
+    ...base(row),
+    cells: [
+      mbScoreCell(row),
+      mbCoverageCell(row),
+      mbPartCell(mbPart(row, 'earningsAcceleration')),
+      mbPartCell(mbPart(row, 'businessQuality')),
+      mbPartCell(mbPart(row, 'cashAndBalanceSheet')),
+      mbPartCell(mbPart(row, 'valuation')),
+      mbPartCell(mbPart(row, 'scannerConfluence')),
+      mbRiskCell(row),
+      {
+        text: dateOnly(row.updatedAt),
+        tone: 'neutral',
+        title: `Financial data snapshot: ${row.dataPeriod ?? 'period not stated'}.${row.multibagger.reasons.length ? ` Driven by: ${row.multibagger.reasons.join(', ')}.` : ''}`,
+      },
+    ],
+  }))
+}
+
 function sectorMetric(value: number | null, digits = 1, suffix = ''): string {
   return value == null ? DASH : `${value.toLocaleString('en-IN', { maximumFractionDigits: digits })}${suffix}`
 }
@@ -488,6 +576,30 @@ export async function OpportunityDashboard() {
           </p>
         </div>
       </section>
+
+      <Section
+        title="Multibagger Radar — Before the Rally"
+        subtitle="Experimental, database-driven shortlist of companies whose fundamentals look like they are improving. Every row shows its evidence and coverage; this predicts nothing."
+        count={`${data.multibagger.length} of ${data.multibaggerMeta.candidates} candidates · v${data.multibaggerMeta.version}`}
+      >
+        <div className="border-b border-[#0f1f33] bg-[#0a1728] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+          Experimental — research weights, not a validated formula
+        </div>
+        <div className="border-b border-[#0f1f33] bg-[#0a1728] px-4 py-2 text-[10px] leading-5 text-slate-500">
+          A separate composite (v{data.multibaggerMeta.version}) over seven components: earnings acceleration (25), business quality &amp; ROCE
+          trend (20), cash flow &amp; balance sheet (15), valuation &amp; margin of safety (15), scanner confluence &amp; fresh entry (10), small-base
+          potential (10) and ownership trend (5). A score appears only once at least {data.multibaggerMeta.minCoverage}% of the model has data;
+          missing metrics never count as positive. Small market cap is treated as room to grow, not a signal on its own, and scanner confluence
+          counts independent scanner <i>categories</i>, not correlated scans. No price/volume history is stored, so this is not a technical
+          pre-rally confirmation. Companion to the sections above — the Opportunity Score, classic score and scanner tables are unchanged.
+        </div>
+        <OppTable
+          columns={multibaggerColumns}
+          rows={multibaggerRows(data.multibagger)}
+          initialSort={0}
+          emptyLabel="Not enough evidence-covered improving names yet. Import fresh fundamentals to populate this radar."
+        />
+      </Section>
     </section>
   )
 }

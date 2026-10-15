@@ -1,7 +1,17 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { buildStockView } from '@/lib/stock-detail'
+import { buildStockView, type StockView } from '@/lib/stock-detail'
 import { computeOpportunity, isFinancialIndustry, opportunityInputFromView } from '@/lib/opportunity'
+import {
+  computeMultibagger,
+  multibaggerInputFromView,
+  MULTIBAGGER_MIN_COVERAGE,
+  MULTIBAGGER_VERSION,
+  type MultiMember,
+  type MetricHistoryDelta,
+  type MultibaggerContext,
+  type MultibaggerResult,
+} from '@/lib/multibagger'
 import { symbolIdentity } from '@/lib/identity'
 import type { GrowthReading } from '@/lib/growth-quality'
 import { buildFlags, type StockFlag } from '@/lib/stock-flags'
@@ -89,6 +99,8 @@ export type OpportunityRow = {
   dataPeriod: string | null
   updatedAt: string | null
   movement: { delta: number; days: number } | null
+  /** Experimental Multibagger Radar score (see lib/multibagger.ts). */
+  multibagger: MultibaggerResult
 }
 
 export type CoverageSummary = {
@@ -105,6 +117,15 @@ export type CoverageSummary = {
   builtAt: string
 }
 
+export type MultibaggerMeta = {
+  version: number
+  minCoverage: number
+  /** Stocks with enough evidence for a comparable score. */
+  evaluable: number
+  /** Stocks on the shortlist after the candidate gate. */
+  candidates: number
+}
+
 export type OpportunityDashboard = {
   coverage: CoverageSummary
   rows: OpportunityRow[]
@@ -115,6 +136,9 @@ export type OpportunityDashboard = {
   turnarounds: OpportunityRow[]
   ownershipMovers: OpportunityRow[]
   sectors: SectorSummary[]
+  /** Experimental multibagger shortlist, ranked by the versioned score. */
+  multibagger: OpportunityRow[]
+  multibaggerMeta: MultibaggerMeta
 }
 
 function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | null; industry: string | null } {
@@ -124,16 +148,14 @@ function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | n
   return { sector: broad?.name ?? null, industry: deep?.name ?? null }
 }
 
-function toRow(stock: StockForRow): OpportunityRow | null {
-  const snapshot = stock.fundamentals[0]
-  if (!snapshot) return null
-  const view = buildStockView(stock, snapshot)
+function toRow(stock: StockForRow, view: StockView): OpportunityRow {
   const input = opportunityInputFromView(view)
   const opportunity = computeOpportunity(input)
   const isFinancial = isFinancialIndustry(view.industry)
   const { sector, industry } = sectorOf(view)
   const broadHref = view.industry[0]?.url ? view.industry[0].url!.replace(/\/$/, '') : null
   const valuationValid = view.price != null && view.price > 0 && view.valuation.intrinsic != null && view.valuation.intrinsic >= 1
+  const ownership = ownershipTrend(view.detail?.shareholding)
 
   return {
     symbol: stock.symbol,
@@ -165,7 +187,7 @@ function toRow(stock: StockForRow): OpportunityRow | null {
     qoqProfitGrowth: input.qoqProfitGrowth,
     flags: buildFlags(view, isFinancial),
     turnaround: assessTurnaround(view.detail),
-    ownership: ownershipTrend(view.detail?.shareholding),
+    ownership,
     components: opportunity.parts.map((part) => ({
       key: part.key,
       label: part.label,
@@ -176,12 +198,29 @@ function toRow(stock: StockForRow): OpportunityRow | null {
       note: part.note,
     })),
     dataPeriod: view.profitGrowth?.currentPeriod ?? view.growth?.latest ?? null,
-    updatedAt: snapshot.capturedAt ? snapshot.capturedAt.toISOString() : null,
+    updatedAt: view.capturedAt ? view.capturedAt.toISOString() : null,
     movement: null,
+    // Provisional: recomputed in buildDashboard once this stock's scanner
+    // memberships and cross-run metric history have been loaded.
+    multibagger: computeMultibagger(
+      multibaggerInputFromView(view, { isFinancial, memberships: [], ownership, history: null }),
+    ),
   }
 }
 
-type HistoryWindow = Map<string, { baseline: number; days: number }>
+type HistoryWindow = Map<string, { baseline: number; days: number; history: MetricHistoryDelta }>
+
+function toNum(value: unknown): number | null {
+  if (value == null) return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function metricDelta(a: unknown, b: unknown): number | null {
+  const latest = toNum(a)
+  const first = toNum(b)
+  return latest != null && first != null ? Number((latest - first).toFixed(4)) : null
+}
 
 async function loadMovement(stockIds: string[]): Promise<HistoryWindow> {
   const result: HistoryWindow = new Map()
@@ -190,16 +229,28 @@ async function loadMovement(stockIds: string[]): Promise<HistoryWindow> {
   const rows = await prisma.stockMetricHistory.findMany({
     where: { stockId: { in: stockIds }, capturedAt: { gte: cutoff }, opportunityScore: { not: null } },
     orderBy: { capturedAt: 'asc' },
-    select: { stockId: true, opportunityScore: true, capturedAt: true },
+    select: { stockId: true, opportunityScore: true, roce: true, profitYoy: true, cfoPat: true, capturedAt: true },
   })
-  const firstPerStock = new Map<string, { score: number; at: Date }>()
+  const perStock = new Map<string, typeof rows>()
   for (const row of rows) {
-    if (row.opportunityScore == null || firstPerStock.has(row.stockId)) continue
-    firstPerStock.set(row.stockId, { score: row.opportunityScore, at: row.capturedAt })
+    const list = perStock.get(row.stockId)
+    if (list) list.push(row)
+    else perStock.set(row.stockId, [row])
   }
-  for (const [stockId, first] of firstPerStock) {
-    const days = Math.max(1, Math.round((Date.now() - first.at.getTime()) / (24 * 60 * 60 * 1000)))
-    result.set(stockId, { baseline: first.score, days })
+  for (const [stockId, list] of perStock) {
+    const first = list[0]
+    const last = list[list.length - 1]
+    if (first.opportunityScore == null) continue
+    const days = Math.max(1, Math.round((Date.now() - first.capturedAt.getTime()) / (24 * 60 * 60 * 1000)))
+    result.set(stockId, {
+      baseline: first.opportunityScore,
+      days,
+      history: {
+        roceChange: metricDelta(last.roce, first.roce),
+        profitYoyChange: metricDelta(last.profitYoy, first.profitYoy),
+        cfoPatChange: metricDelta(last.cfoPat, first.cfoPat),
+      },
+    })
   }
   return result
 }
@@ -213,26 +264,64 @@ function growthSortValue(reading: GrowthReading | null): number {
 }
 
 async function buildDashboard(): Promise<OpportunityDashboard> {
-  const [stocks, scanners, lastRun, latestSnapshot] = await Promise.all([
+  const [stocks, membershipRows, scanners, lastRun, latestSnapshot] = await Promise.all([
     prisma.stock.findMany({
       where: { fundamentals: { some: {} } },
       include: { fundamentals: { orderBy: { capturedAt: 'desc' as const }, take: 1 } },
+    }),
+    prisma.scannerStock.findMany({
+      where: { scanner: { enabled: true } },
+      select: {
+        stockId: true,
+        scannerId: true,
+        firstSeenAt: true,
+        lastSeenAt: true,
+        scanner: { select: { category: true } },
+      },
     }),
     prisma.scanner.count({ where: { enabled: true } }),
     prisma.fetchRun.findFirst({ where: { status: 'SUCCEEDED' }, orderBy: { endedAt: 'desc' }, select: { endedAt: true, sourceUrl: true } }),
     prisma.stockFundamentalSnapshot.findFirst({ orderBy: { capturedAt: 'desc' }, select: { capturedAt: true } }),
   ])
 
+  const membershipsByStock = new Map<string, MultiMember[]>()
+  for (const row of membershipRows) {
+    const member: MultiMember = {
+      scannerId: row.scannerId,
+      category: row.scanner.category,
+      firstSeenAt: row.firstSeenAt,
+      lastSeenAt: row.lastSeenAt,
+    }
+    const list = membershipsByStock.get(row.stockId)
+    if (list) list.push(member)
+    else membershipsByStock.set(row.stockId, [member])
+  }
+
   const rowsWithId = stocks
-    .map((stock) => ({ id: stock.id, row: toRow(stock) }))
-    .filter((entry): entry is { id: string; row: OpportunityRow } => entry.row != null)
+    .map((stock) => {
+      const snapshot = stock.fundamentals[0]
+      if (!snapshot) return null
+      const view = buildStockView(stock, snapshot)
+      return { id: stock.id, view, row: toRow(stock, view) }
+    })
+    .filter((entry): entry is { id: string; view: StockView; row: OpportunityRow } => entry != null)
 
   const evaluable = rowsWithId.filter((entry) => entry.row.coveragePct >= RADAR_MIN_COVERAGE)
   const movement = await loadMovement(evaluable.map((entry) => entry.id))
-  for (const { id, row } of rowsWithId) {
+  for (const { id, view, row } of rowsWithId) {
     const window = movement.get(id)
     row.movement =
       window && row.opportunity != null ? { delta: row.opportunity - window.baseline, days: window.days } : null
+
+    // Finalize the Multibagger score with this stock's scanner confluence and
+    // cross-run history, which are only available after the DB reads above.
+    const context: MultibaggerContext = {
+      isFinancial: row.isFinancial,
+      memberships: membershipsByStock.get(id) ?? [],
+      ownership: row.ownership,
+      history: window?.history ?? null,
+    }
+    row.multibagger = computeMultibagger(multibaggerInputFromView(view, context))
   }
 
   const rows = rowsWithId.map((entry) => entry.row)
@@ -291,6 +380,17 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
   }))
   const sectors = summarizeSectors(sectorInputs)
 
+  // Experimental Multibagger Radar shortlist: only rows whose evidence coverage
+  // clears the gate AND that show earnings/quality improvement, ranked by score.
+  const multibagger = rows
+    .filter((row) => row.multibagger.candidate)
+    .sort(
+      (a, b) =>
+        (b.multibagger.normalized ?? -1) - (a.multibagger.normalized ?? -1) ||
+        b.multibagger.coveragePct - a.multibagger.coveragePct,
+    )
+    .slice(0, 15)
+
   return {
     coverage: {
       stocks: await prisma.stock.count(),
@@ -310,19 +410,28 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     turnarounds,
     ownershipMovers,
     sectors,
+    multibagger,
+    multibaggerMeta: {
+      version: MULTIBAGGER_VERSION,
+      minCoverage: MULTIBAGGER_MIN_COVERAGE,
+      evaluable: rows.filter((row) => row.multibagger.normalized != null).length,
+      candidates: rows.filter((row) => row.multibagger.candidate).length,
+    },
   }
 }
 
 /**
  * Cheap fingerprint of the rows the dashboard is built from. Row counts plus the
- * newest timestamps are enough to notice an inserted/updated stock or snapshot,
- * so it is a handful of aggregates instead of the full per-row decode.
+ * newest timestamps are enough to notice an inserted/updated stock, snapshot or
+ * scanner membership (the multibagger confluence depends on memberships), so it
+ * is a handful of aggregates instead of the full per-row decode.
  */
 async function dashboardSignature(): Promise<string> {
-  const [stocks, snapshots, scanners] = await Promise.all([
+  const [stocks, snapshots, scanners, memberships] = await Promise.all([
     prisma.stock.aggregate({ _count: { _all: true }, _max: { updatedAt: true } }),
     prisma.stockFundamentalSnapshot.aggregate({ _count: { _all: true }, _max: { capturedAt: true } }),
     prisma.scanner.count({ where: { enabled: true } }),
+    prisma.scannerStock.aggregate({ _count: { _all: true }, _max: { updatedAt: true } }),
   ])
   return [
     stocks._count._all,
@@ -330,6 +439,8 @@ async function dashboardSignature(): Promise<string> {
     snapshots._count._all,
     snapshots._max.capturedAt?.getTime() ?? 0,
     scanners,
+    memberships._count._all,
+    memberships._max.updatedAt?.getTime() ?? 0,
   ].join('|')
 }
 
