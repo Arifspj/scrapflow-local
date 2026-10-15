@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma migrate deploy && prisma generate && next build",
+    "vercel-build": "(prisma migrate deploy || echo \"[vercel-build] prisma migrate deploy failed (database unreachable?) - continuing so the app can deploy; run db:deploy once the database is reachable\") && prisma generate && next build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:deploy": "prisma migrate deploy"

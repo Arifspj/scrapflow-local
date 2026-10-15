@@ -24,20 +24,30 @@ export default async function HomePage({ searchParams }: Props) {
 
   if (query) {
     const saved = await findStocksByQuery(query)
-    const exact = saved.find((stock) => stock.symbol.toUpperCase() === query.toUpperCase())
-    if (exact) redirect(`/stocks/${encodeURIComponent(exact.symbol)}`)
-    if (saved.length === 1) redirect(`/stocks/${encodeURIComponent(saved[0].symbol)}`)
+    const direct =
+      saved.find((stock) => stock.symbol.toUpperCase() === query.toUpperCase())?.symbol ??
+      (saved.length === 1 ? saved[0].symbol : null)
+    if (direct) redirect(`/stocks/${encodeURIComponent(direct)}`)
 
     if (saved.length === 0) {
       const requestHeaders = await headers()
       const clientKey = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anonymous'
+      // Only the scrape+persist step is guarded: `redirect()` throws a control-flow
+      // error, so it must stay outside the try/catch. A database outage here just
+      // falls through to the (empty-safe) scanner render below.
+      let scrapedSymbol: string | null = null
       if (!rateLimited(clientKey)) {
-        const scraped = await scrapeScreenerCompany(query)
-        if (scraped) {
-          await upsertStockFromScrape(scraped)
-          redirect(`/stocks/${encodeURIComponent(scraped.symbol)}`)
+        try {
+          const scraped = await scrapeScreenerCompany(query)
+          if (scraped) {
+            await upsertStockFromScrape(scraped)
+            scrapedSymbol = scraped.symbol
+          }
+        } catch (error) {
+          console.error('[home] on-demand import failed', error)
         }
       }
+      if (scrapedSymbol) redirect(`/stocks/${encodeURIComponent(scrapedSymbol)}`)
     }
   }
 

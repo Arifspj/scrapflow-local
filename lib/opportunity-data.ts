@@ -464,6 +464,42 @@ async function dashboardSignature(): Promise<string> {
   ].join('|')
 }
 
+/**
+ * The dashboard shape returned when the database cannot be read. It keeps the
+ * homepage renderable (sections simply have no rows) instead of letting the
+ * server component throw and surface a 500 during a database outage.
+ */
+function emptyDashboard(): OpportunityDashboard {
+  return {
+    coverage: {
+      stocks: 0,
+      withFundamentals: 0,
+      evaluable: 0,
+      scanners: 0,
+      lastImportAt: null,
+      lastImportSource: null,
+      dataAsOf: null,
+      builtAt: new Date().toISOString(),
+    },
+    rows: [],
+    radar: [],
+    earnings: [],
+    undervalued: [],
+    redFlags: [],
+    turnarounds: [],
+    ownershipMovers: [],
+    sectors: [],
+    multibagger: [],
+    multibaggerMeta: {
+      version: MULTIBAGGER_CURRENT_VERSION,
+      minCoverage: MULTIBAGGER_MIN_COVERAGE,
+      evaluable: 0,
+      candidates: 0,
+      excludedNumeric: 0,
+    },
+  }
+}
+
 export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
   let signature: string | null = null
   try {
@@ -490,6 +526,13 @@ export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
     .then((data) => {
       writeOpportunityCache(signature ?? 'unsignatured', data)
       return data
+    })
+    .catch((error) => {
+      // Database unreachable (or the build failed for another transient reason):
+      // render the empty dashboard rather than 500. Nothing is cached, so the
+      // next successful read rebuilds and fills the cache.
+      console.error('[opportunity] dashboard build failed; rendering the empty dashboard', error)
+      return emptyDashboard()
     })
     .finally(() => setInflightOpportunity(null))
   setInflightOpportunity(task as Promise<unknown>)

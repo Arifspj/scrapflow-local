@@ -26,25 +26,33 @@ export type PublicScannerOption = { name: string; description: string }
  * only when no scanner row exists yet.
  */
 export async function listPublicScanners(): Promise<PublicScannerOption[]> {
-  const scanners = await prisma.scanner.findMany({
-    where: { enabled: true },
-    select: { name: true, description: true },
-  })
-  if (scanners.length === 0) return scannerCategories.map(([name, text]) => ({ name, description: text }))
-
-  return scanners
-    .map((scanner) => ({
-      name: scanner.name,
-      description: scanner.description?.trim() || CANONICAL_DESCRIPTIONS.get(scanner.name) || 'Source-backed screen.',
-    }))
-    .sort((a, b) => {
-      const ai = CANONICAL_ORDER.get(a.name)
-      const bi = CANONICAL_ORDER.get(b.name)
-      if (ai != null && bi != null) return ai - bi
-      if (ai != null) return -1
-      if (bi != null) return 1
-      return a.name.localeCompare(b.name)
+  const canonical = () => scannerCategories.map(([name, text]) => ({ name, description: text }))
+  try {
+    const scanners = await prisma.scanner.findMany({
+      where: { enabled: true },
+      select: { name: true, description: true },
     })
+    if (scanners.length === 0) return canonical()
+
+    return scanners
+      .map((scanner) => ({
+        name: scanner.name,
+        description: scanner.description?.trim() || CANONICAL_DESCRIPTIONS.get(scanner.name) || 'Source-backed screen.',
+      }))
+      .sort((a, b) => {
+        const ai = CANONICAL_ORDER.get(a.name)
+        const bi = CANONICAL_ORDER.get(b.name)
+        if (ai != null && bi != null) return ai - bi
+        if (ai != null) return -1
+        if (bi != null) return 1
+        return a.name.localeCompare(b.name)
+      })
+  } catch (error) {
+    // The scanner list is persisted in the DB; when it is unreachable fall back
+    // to the canonical nine so the homepage still renders instead of 500ing.
+    console.error('[public-data] scanner list read failed; showing the canonical scanner list', error)
+    return canonical()
+  }
 }
 
 export function decimal(value: unknown) {
@@ -66,18 +74,25 @@ export function display(value: unknown, suffix = '') {
 export const PUBLIC_TABLE_ROW_CAP = 5000
 
 export async function getPublicSnapshot(scannerId?: string, search = '', limit: number = PUBLIC_TABLE_ROW_CAP) {
-  const scanner = scannerId
-    ? await prisma.scanner.findFirst({ where: { OR: [{ id: scannerId }, { name: scannerId }], enabled: true }, select: { id: true, name: true, category: true, description: true } })
-    : await prisma.scanner.findFirst({ where: { enabled: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, category: true, description: true } })
-  if (!scanner) return { scanner: null, rows: [], total: 0, stockCount: 0, latest: null }
-  const where = { scannerId: scanner.id, ...(search ? { stock: { OR: [{ symbol: { contains: search.toUpperCase() } }, { companyName: { contains: search, mode: 'insensitive' as const } }] } } : {}) }
-  const [members, total, stockCount, latest] = await Promise.all([
-    prisma.scannerStock.findMany({ where, include: { stock: { include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } } } }, orderBy: { lastSeenAt: 'desc' }, take: limit }),
-    prisma.scannerStock.count({ where }),
-    prisma.stock.count(),
-    prisma.stock.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
-  ])
-  return { scanner, rows: members, total, stockCount, latest }
+  try {
+    const scanner = scannerId
+      ? await prisma.scanner.findFirst({ where: { OR: [{ id: scannerId }, { name: scannerId }], enabled: true }, select: { id: true, name: true, category: true, description: true } })
+      : await prisma.scanner.findFirst({ where: { enabled: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, category: true, description: true } })
+    if (!scanner) return { scanner: null, rows: [], total: 0, stockCount: 0, latest: null }
+    const where = { scannerId: scanner.id, ...(search ? { stock: { OR: [{ symbol: { contains: search.toUpperCase() } }, { companyName: { contains: search, mode: 'insensitive' as const } }] } } : {}) }
+    const [members, total, stockCount, latest] = await Promise.all([
+      prisma.scannerStock.findMany({ where, include: { stock: { include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } } } }, orderBy: { lastSeenAt: 'desc' }, take: limit }),
+      prisma.scannerStock.count({ where }),
+      prisma.stock.count(),
+      prisma.stock.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
+    ])
+    return { scanner, rows: members, total, stockCount, latest }
+  } catch (error) {
+    // A database outage must not crash the server-rendered homepage; render the
+    // empty-state UI instead of a 500.
+    console.error('[public-data] public snapshot read failed; rendering the empty state', error)
+    return { scanner: null, rows: [], total: 0, stockCount: 0, latest: null }
+  }
 }
 
 type Snapshot = Awaited<ReturnType<typeof getPublicSnapshot>>

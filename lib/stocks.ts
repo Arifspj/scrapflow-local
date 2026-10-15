@@ -20,17 +20,24 @@ function toDecimal(value: number | undefined): Prisma.Decimal | null {
 export async function findStocksByQuery(query: string, limit = 10): Promise<StockSearchHit[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
-  return prisma.stock.findMany({
-    where: {
-      OR: [
-        { symbol: trimmed.toUpperCase() },
-        { companyName: { contains: trimmed, mode: 'insensitive' } },
-      ],
-    },
-    select: { symbol: true, companyName: true },
-    orderBy: { symbol: 'asc' },
-    take: limit,
-  })
+  try {
+    return await prisma.stock.findMany({
+      where: {
+        OR: [
+          { symbol: trimmed.toUpperCase() },
+          { companyName: { contains: trimmed, mode: 'insensitive' } },
+        ],
+      },
+      select: { symbol: true, companyName: true },
+      orderBy: { symbol: 'asc' },
+      take: limit,
+    })
+  } catch (error) {
+    // Search must never take the homepage down; an unreachable database simply
+    // yields no saved matches (the caller then tries the on-demand import).
+    console.error('[stocks] stock search read failed; returning no matches', error)
+    return []
+  }
 }
 
 /**
@@ -90,8 +97,15 @@ const stockDetailInclude = {
 
 export type StockWithDetail = Prisma.StockGetPayload<{ include: typeof stockDetailInclude }>
 
-function loadStockWithDetail(symbol: string): Promise<StockWithDetail | null> {
-  return prisma.stock.findUnique({ where: { symbol }, include: stockDetailInclude })
+async function loadStockWithDetail(symbol: string): Promise<StockWithDetail | null> {
+  try {
+    return await prisma.stock.findUnique({ where: { symbol }, include: stockDetailInclude })
+  } catch (error) {
+    // A database outage should surface as "not available" (the route's 404 path)
+    // rather than throwing out of the server component.
+    console.error(`[stocks] stock detail read failed for ${symbol}`, error)
+    return null
+  }
 }
 
 /**
