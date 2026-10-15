@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, prompts })
   } catch (error) {
     console.error('[admin/prompts] list failed', error)
-    return NextResponse.json({ ok: false, error: 'Could not load prompts.' }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Database unavailable.' }, { status: 503 })
   }
 }
 

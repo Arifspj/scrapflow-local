@@ -57,7 +57,7 @@ export async function GET(request: Request) {
   })
   } catch (error) {
     console.error('[admin/scanners] failed', error)
-    return NextResponse.json({ ok: false, error: 'Could not load scanners.' }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Database unavailable.' }, { status: 503 })
   }
 }
 
