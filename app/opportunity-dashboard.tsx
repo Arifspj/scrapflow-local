@@ -311,7 +311,11 @@ function mbPartCell(part: MultibaggerPart | null): OppCell {
   return {
     text: `${ratio}% (${part.presentCount}/${part.totalCount})`,
     tone,
-    title: `${part.label}: ${part.earned}/${part.max} pts from ${part.presentCount} of ${part.totalCount} inputs (${part.subCoveragePct}% of this component has data).${detail ? ` Inputs: ${detail}.` : ''}`,
+    title:
+      `${part.label}: performance ${ratio}% = average score of the inputs that have data. ` +
+      `Input coverage ${part.presentCount}/${part.totalCount} (${part.subCoveragePct}%) = how many of this component's inputs are available. ` +
+      `These are independent — 4/4 means well-measured, not that performance is 100%. Earned ${part.earned}/${part.max} pts.` +
+      (detail ? ` Per-input scores: ${detail}.` : ''),
   }
 }
 
@@ -600,8 +604,9 @@ export async function OpportunityDashboard() {
           A separate composite (v{data.multibaggerMeta.version}) over seven components: earnings acceleration (25), business quality &amp; ROCE
           trend (20), cash flow &amp; balance sheet (15), valuation &amp; margin of safety (15), scanner confluence &amp; fresh entry (10), small-base
           potential (10) and ownership trend (5). v2 counts evidence honestly: each component contributes only the share of its inputs that
-          actually carry data, so one available metric can never make a whole component look fully evidenced (the number in brackets under a
-          component is that component&apos;s input coverage, e.g. <span className="text-slate-400">2/4 inputs</span>). A score appears only once at
+          actually carry data, so one available metric can never make a whole component look fully evidenced. In each component cell the
+          percentage is the average score of the inputs present and the bracket is input coverage, e.g.{' '}
+          <span className="text-slate-400">79% (2/4)</span> = 79% average across 2 of 4 inputs — the two are independent. A score appears only at
           least {data.multibaggerMeta.minCoverage}% of the evidence-weighted model has data. Small market cap is capped — it is room to grow,
           never a signal on its own — and fresh-entry credit is withheld until at least two independent scanner <i>categories</i> corroborate.
           Missing metrics are shown as unevaluated, never as positive or negative. No price/volume history is stored, so this is not a technical
