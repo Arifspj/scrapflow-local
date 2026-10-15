@@ -341,6 +341,13 @@ function mbRiskCell(row: OpportunityRow): OppCell {
   const ownershipRisk = (row.ownership?.signals ?? []).filter((signal) => /falling/i.test(signal))
   const labels = [...row.flags.map((flag) => flag.label), ...ownershipRisk]
   if (!labels.length) {
+    if (!row.riskInputsAvailable) {
+      return {
+        text: 'Risk data unavailable',
+        tone: 'neutral',
+        title: 'No cash-flow, leverage, margin or profitability inputs are saved for this company, so no risk could be assessed.',
+      }
+    }
     return { text: 'None noted', tone: 'neutral', title: 'No flagged cash-flow, leverage or profitability risk in the saved data.' }
   }
   const bad = row.flags.some((flag) => flag.severity === 'bad') || ownershipRisk.length > 0

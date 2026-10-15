@@ -290,6 +290,18 @@ export function computeMultibagger(input: MultibaggerInput, now: Date = new Date
   }
 }
 
+/**
+ * Whether a scored row belongs on the public Multibagger shortlist.
+ *
+ * The shortlist is a research call, so an unresolved numeric source id (a bare
+ * BSE/SME code with no verified exchange ticker — see lib/identity.ts) must not
+ * be presented as a named multibagger candidate even when its score clears the
+ * candidate gate. Such rows still appear in the opportunity lists, flagged.
+ */
+export function shortlistEligible(result: MultibaggerResult, identity: { numeric: boolean }): boolean {
+  return result.candidate && !identity.numeric
+}
+
 // ---------------------------------------------------------------------------
 // Adapter: turn a saved StockView (+ membership / history context) into input.
 // ---------------------------------------------------------------------------

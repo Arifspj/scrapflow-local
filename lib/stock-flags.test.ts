@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildFlags } from './stock-flags'
+import { buildFlags, hasRiskInputs } from './stock-flags'
 import { assessGrowth } from './growth-quality'
 import type { StockView } from './stock-detail'
 
@@ -60,5 +60,30 @@ describe('buildFlags', () => {
   it('ignores a non-comparable profit drop (loss base) rather than flagging it', () => {
     const result = flags({ netProfit: 10, profitGrowth: assessGrowth({ metric: 'Net profit', current: 10, previous: -3 }) })
     expect(result.map((flag) => flag.key)).not.toContain('profit-declining')
+  })
+})
+
+describe('hasRiskInputs', () => {
+  it('is false when no risk input is saved, so an empty flag list means "unknown"', () => {
+    const bare = view({})
+    expect(buildFlags(bare, false)).toHaveLength(0)
+    expect(hasRiskInputs(bare, false)).toBe(false)
+  })
+
+  it('is true as soon as any single risk input is present', () => {
+    expect(hasRiskInputs(view({ cfoPat: 1.2 }), false)).toBe(true)
+    expect(hasRiskInputs(view({ roce: 14 }), false)).toBe(true)
+    expect(hasRiskInputs(view({ netProfit: 5 }), false)).toBe(true)
+    expect(hasRiskInputs(view({ debtToEquity: 0.4 }), false)).toBe(true)
+  })
+
+  it('ignores debt/equity for financials (not a risk input there)', () => {
+    expect(hasRiskInputs(view({ debtToEquity: 6 }), true)).toBe(false)
+    expect(hasRiskInputs(view({ cfoPat: 1.2 }), true)).toBe(true)
+  })
+
+  it('ignores a non-comparable growth reading (no percentage to reason about)', () => {
+    const nonComparable = view({ profitGrowth: assessGrowth({ metric: 'Net profit', current: 10, previous: -3 }) })
+    expect(hasRiskInputs(nonComparable, false)).toBe(false)
   })
 })

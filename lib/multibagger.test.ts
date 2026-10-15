@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   computeMultibagger,
   multibaggerInputFromView,
+  shortlistEligible,
   MULTIBAGGER_MIN_COVERAGE,
   MULTIBAGGER_WEIGHTS,
   type MultibaggerInput,
@@ -131,6 +132,19 @@ describe('computeMultibagger', () => {
 
   it('is versioned', () => {
     expect(computeMultibagger(input()).version).toBe(1)
+  })
+
+  it('keeps an unresolved numeric id off the public shortlist even when it is a candidate', () => {
+    const result = computeMultibagger(input())
+    expect(result.candidate).toBe(true)
+    expect(shortlistEligible(result, { numeric: true })).toBe(false)
+    expect(shortlistEligible(result, { numeric: false })).toBe(true)
+  })
+
+  it('never marks a non-candidate eligible, regardless of identity', () => {
+    const belowGate = computeMultibagger(input({ ...ALL_NULL, roce: 20, roe: 19 }))
+    expect(belowGate.candidate).toBe(false)
+    expect(shortlistEligible(belowGate, { numeric: false })).toBe(false)
   })
 })
 

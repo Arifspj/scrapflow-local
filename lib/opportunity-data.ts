@@ -5,6 +5,7 @@ import { computeOpportunity, isFinancialIndustry, opportunityInputFromView } fro
 import {
   computeMultibagger,
   multibaggerInputFromView,
+  shortlistEligible,
   MULTIBAGGER_MIN_COVERAGE,
   MULTIBAGGER_VERSION,
   type MultiMember,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/multibagger'
 import { symbolIdentity } from '@/lib/identity'
 import type { GrowthReading } from '@/lib/growth-quality'
-import { buildFlags, type StockFlag } from '@/lib/stock-flags'
+import { buildFlags, hasRiskInputs, type StockFlag } from '@/lib/stock-flags'
 import { assessTurnaround, type TurnaroundAssessment } from '@/lib/turnaround'
 import { ownershipTrend, type OwnershipTrend } from '@/lib/ownership'
 import { summarizeSectors, type SectorInput, type SectorSummary } from '@/lib/sector-map'
@@ -93,6 +94,8 @@ export type OpportunityRow = {
   profitGrowth: GrowthReading | null
   qoqProfitGrowth: GrowthReading | null
   flags: StockFlag[]
+  /** True when at least one input buildFlags reasons about is present. */
+  riskInputsAvailable: boolean
   turnaround: TurnaroundAssessment | null
   ownership: OwnershipTrend | null
   components: OpportunityComponentView[]
@@ -124,6 +127,8 @@ export type MultibaggerMeta = {
   evaluable: number
   /** Stocks on the shortlist after the candidate gate. */
   candidates: number
+  /** Candidate rows held back because their symbol is an unresolved numeric id. */
+  excludedNumeric: number
 }
 
 export type OpportunityDashboard = {
@@ -186,6 +191,7 @@ function toRow(stock: StockForRow, view: StockView): OpportunityRow {
     profitGrowth: view.profitGrowth,
     qoqProfitGrowth: input.qoqProfitGrowth,
     flags: buildFlags(view, isFinancial),
+    riskInputsAvailable: hasRiskInputs(view, isFinancial),
     turnaround: assessTurnaround(view.detail),
     ownership,
     components: opportunity.parts.map((part) => ({
@@ -383,7 +389,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
   // Experimental Multibagger Radar shortlist: only rows whose evidence coverage
   // clears the gate AND that show earnings/quality improvement, ranked by score.
   const multibagger = rows
-    .filter((row) => row.multibagger.candidate)
+    .filter((row) => shortlistEligible(row.multibagger, row.identity))
     .sort(
       (a, b) =>
         (b.multibagger.normalized ?? -1) - (a.multibagger.normalized ?? -1) ||
@@ -416,6 +422,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
       minCoverage: MULTIBAGGER_MIN_COVERAGE,
       evaluable: rows.filter((row) => row.multibagger.normalized != null).length,
       candidates: rows.filter((row) => row.multibagger.candidate).length,
+      excludedNumeric: rows.filter((row) => row.multibagger.candidate && row.identity.numeric).length,
     },
   }
 }

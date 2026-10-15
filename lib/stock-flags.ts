@@ -24,6 +24,21 @@ function pct(value: number): string {
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
+/**
+ * Whether any input `buildFlags` reasons about is present. Used by the UI to tell
+ * "no risk was found" apart from "no risk data was available" — an empty flag
+ * list means nothing when the underlying fields are all missing.
+ */
+export function hasRiskInputs(view: StockView, isFinancial: boolean): boolean {
+  if (view.cfoPat != null) return true
+  if (!isFinancial && view.debtToEquity != null) return true
+  if (view.netProfit != null) return true
+  if (view.roce != null) return true
+  if (view.profitGrowth && view.profitGrowth.comparable && view.profitGrowth.pct != null) return true
+  if (view.salesGrowth && view.salesGrowth.comparable && view.salesGrowth.pct != null) return true
+  return false
+}
+
 export function buildFlags(view: StockView, isFinancial: boolean): StockFlag[] {
   const flags: StockFlag[] = []
 
