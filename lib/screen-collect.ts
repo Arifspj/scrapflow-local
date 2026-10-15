@@ -1,5 +1,6 @@
 import { parseScreenerScreen } from './scrapers/screener'
 import { discoverPageNumbers, parsePageInfo, pageUrl } from './scrapers/paging'
+import { isScreenerAuthPage } from './scrapers/screener-auth'
 import type { ParsedSymbol } from './scrapers/types'
 
 /**
@@ -33,6 +34,8 @@ export type ScreenImportReport = {
   uniqueSymbols: number
   duplicatesSkipped: number
   limitReached: boolean
+  /** True when the source returned its sign-in page instead of the screen. */
+  authRequired: boolean
   status: ScreenImportStatus
   warnings: string[]
   startedAt: string
@@ -70,6 +73,7 @@ export async function collectScreenerScreen(
     uniqueSymbols: 0,
     duplicatesSkipped: 0,
     limitReached: false,
+    authRequired: false,
     status: 'failed',
     warnings: [],
     startedAt: startedAt.toISOString(),
@@ -86,6 +90,7 @@ export async function collectScreenerScreen(
   }
 
   const first = parseScreenerScreen(firstHtml)
+  report.authRequired = isScreenerAuthPage(firstHtml)
   report.warnings.push(...first.warnings)
   report.pagesFetched = 1
   allSymbols.push(...first.symbols)
@@ -126,7 +131,9 @@ export async function collectScreenerScreen(
   report.duplicatesSkipped = allSymbols.length - bySymbol.size
   report.uniqueSymbols = bySymbol.size
 
-  if (report.pagesFetched === 0) {
+  if (report.authRequired) {
+    report.status = 'failed'
+  } else if (report.pagesFetched === 0) {
     report.status = 'failed'
   } else if (report.limitReached) {
     report.status = 'limit-reached'

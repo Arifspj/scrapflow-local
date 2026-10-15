@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   for (const url of rawUrls) {
     const kind = kindFromUrl(url)
     if (!kind) {
-      return NextResponse.json({ ok: false, error: `Unsupported source URL: ${url}. Use a screener.in /screens, /market, /company, /results or /ipo page, or a chartink.com scan.` }, { status: 400 })
+      return NextResponse.json({ ok: false, error: `Unsupported source URL: ${url}. Use a screener.in /screens, /screen, /market, /company, /results or /ipo page, or a chartink.com scan.` }, { status: 400 })
     }
     parsedUrls.push({ url, kind })
   }

@@ -1,5 +1,6 @@
 import { parseChartinkScreen } from './chartink'
 import { parseScreenerCompany, parseScreenerScreen } from './screener'
+import { parseScreenerRawSource } from './screener-raw'
 import { parseScreenerMarketSource } from './screener-market'
 import { parseScreenerIpoSource } from './screener-ipo'
 import { parseScreenerResultsSource } from './screener-results'
@@ -11,6 +12,8 @@ export function parseSource(html: string, kind: SourceKind, sourceUrl: string): 
       return parseChartinkScreen(html)
     case 'screener-screen':
       return parseScreenerScreen(html)
+    case 'screener-raw-screen':
+      return parseScreenerRawSource(html)
     case 'screener-market':
       return parseScreenerMarketSource(html, sourceUrl)
     case 'screener-ipo':

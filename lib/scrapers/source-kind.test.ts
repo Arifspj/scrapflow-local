@@ -7,6 +7,10 @@ describe('sourceKindFromLabel', () => {
   it('maps the market category label', () => {
     expect(sourceKindFromLabel('Screener market category')).toBe('screener-market')
   })
+
+  it('maps the raw query label', () => {
+    expect(sourceKindFromLabel('Screener raw query')).toBe('screener-raw-screen')
+  })
 })
 
 describe('kindFromUrl', () => {
@@ -14,6 +18,16 @@ describe('kindFromUrl', () => {
     expect(kindFromUrl('https://www.screener.in/screens/184/value-stocks/')).toBe('screener-screen')
     expect(kindFromUrl('https://www.screener.in/market/IN05/IN0501/')).toBe('screener-market')
     expect(kindFromUrl('https://www.screener.in/company/RELIANCE/')).toBe('screener-company')
+  })
+
+  it('detects login-gated raw query links', () => {
+    expect(
+      kindFromUrl(
+        'https://www.screener.in/screen/raw/?sort=&order=&source_id=1680199&query=Number+of+equity+shares+%3E+Number+of+equity+shares+preceding+year+*+3',
+      ),
+    ).toBe('screener-raw-screen')
+    expect(kindFromUrl('https://www.screener.in/screen/')).toBe('screener-raw-screen')
+    expect(kindFromUrl('https://www.screener.in/screen/raw/')).toBe('screener-raw-screen')
   })
 
   it('detects the latest-results listing whatever the query string', () => {

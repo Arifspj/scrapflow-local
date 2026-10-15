@@ -15,6 +15,7 @@ export function sourceTypeFromKind(kind: SourceKind): ScannerSourceType {
     case 'screener-market':
     case 'screener-ipo':
     case 'screener-results':
+    case 'screener-raw-screen':
     case 'screener-screen':
       return ScannerSourceType.SCREENER_SCREEN
     case 'screener-company':

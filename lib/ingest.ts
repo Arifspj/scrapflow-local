@@ -9,6 +9,7 @@ import { collectScreenerResults, type ResultsImportStatus } from '@/lib/results-
 import { segmentsFromMarketUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import type { IpoMetrics } from '@/lib/scrapers/screener-ipo'
 import { SCREENER_RESULTS_PARSER_VERSION } from '@/lib/scrapers/screener-results'
+import { SCREENER_RAW_PARSER_VERSION } from '@/lib/scrapers/screener-raw'
 import { hasScreenerCredentials, screenerFetchPolite } from '@/lib/scrapers/screener-auth'
 import { symbolFromCompanyHref } from '@/lib/scrapers/screener'
 import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreenerSymbolLite } from '@/lib/scrapers/resolve'
@@ -108,14 +109,30 @@ function previewMessage(
 export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   const kind = kindFromUrl(rawUrl)
   if (!kind) {
-    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /ipo, /market, /results or /company page, or a chartink.com scan.' }
+    return { ok: false, kind: null, kindLabel: null, status: 0, stopped: false, symbolCount: 0, rows: [], warnings: [], message: 'Unsupported source URL. Use a screener.in /screens, /screen, /ipo, /market, /results or /company page, or a chartink.com scan.' }
   }
 
   // Public screens are paginated, so preview every page (bounded) the same way
   // the import will, otherwise the preview under-reports the real row count.
-  if (kind === 'screener-screen') {
+  // Raw queries (`/screen/raw/`) share the same DOM/collector but are login-gated.
+  if (kind === 'screener-screen' || kind === 'screener-raw-screen') {
     const { symbols, report } = await collectScreenerScreen(rawUrl, async (url) => (await screenerFetchPolite(url)).html, { maxPages: listPageLimit(), delayMs: 120 })
     const rows = symbols.slice(0, 50).map((row) => ({ symbol: row.symbol, companyName: row.companyName }))
+    if (report.authRequired) {
+      return {
+        ok: false,
+        kind,
+        kindLabel: KIND_TO_LABEL[kind],
+        status: 200,
+        stopped: false,
+        symbolCount: 0,
+        rows: [],
+        warnings: report.warnings,
+        message: hasScreenerCredentials()
+          ? 'Screener.in returned its sign-in page — the saved session was rejected. Confirm SCREENER_EMAIL / SCREENER_PASSWORD still sign in, then redeploy.'
+          : 'This source needs a screener.in login. Set SCREENER_EMAIL and SCREENER_PASSWORD (Production), then redeploy.',
+      }
+    }
     return {
       ok: symbols.length > 0,
       kind,
@@ -467,7 +484,7 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         diagnostics.enrichSkipped = enrichResult.skipped
         diagnostics.enrichPending = enrichResult.pending
       }
-    } else if (kind === 'screener-screen') {
+    } else if (kind === 'screener-screen' || kind === 'screener-raw-screen') {
       const { symbols, report } = await collectScreenerScreen(source.url, async (url) => (await screenerFetchPolite(url)).html, {
         maxPages: listMaxPages,
         delayMs: 150,
@@ -487,7 +504,7 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         updated = persisted.updated
         memberships = persisted.memberships
         status = reportStatusToFetchRun(report.status)
-        parserVersion = 'screener-screen@1.0.0'
+        parserVersion = kind === 'screener-raw-screen' ? SCREENER_RAW_PARSER_VERSION : 'screener-screen@1.0.0'
         if (status === 'FAILED') errorSummary = 'No pages could be fetched from the screen.'
 
         if (persisted.memberships) {
@@ -498,7 +515,9 @@ export async function runSourceImport(sourceId: string, options: { maxPages?: nu
         }
       } else {
         status = 'FAILED'
-        errorSummary = report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the screen.'
+        errorSummary = report.authRequired
+          ? 'Screener.in returned its sign-in page — this raw query needs a signed-in session (SCREENER_EMAIL / SCREENER_PASSWORD).'
+          : report.pagesFetched > 0 ? 'No rows were parsed from this source.' : 'No pages could be fetched from the screen.'
       }
     } else if (kind === 'screener-ipo') {
       const { report, rows } = await collectScreenerIpo(source.url, async (url) => (await screenerFetchPolite(url)).html, {

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const kind = kindFromUrl(url)
   if (!kind) {
-    return NextResponse.json({ ok: false, error: 'Unsupported URL. Use a screener.in /screens, /ipo, /market, /results or /company page, or a chartink.com scan.' }, { status: 400 })
+    return NextResponse.json({ ok: false, error: 'Unsupported URL. Use a screener.in /screens, /screen, /ipo, /market, /results or /company page, or a chartink.com scan.' }, { status: 400 })
   }
 
   const scanner = await prisma.scanner.findUnique({ where: { id: scannerId }, select: { id: true } })

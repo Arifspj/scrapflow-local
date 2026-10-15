@@ -104,4 +104,12 @@ describe('collectScreenerScreen', () => {
     expect(report.status).toBe('partial')
     expect(report.pagesFailed[0]).toMatchObject({ page: 2, error: 'boom' })
   })
+
+  it('reports authRequired when the source returns the sign-in page', async () => {
+    const auth = '<!doctype html><html><head><title>Register - Screener</title></head><body><form action="/register/">Already have an account?</form></body></html>'
+    const { symbols, report } = await collectScreenerScreen(SOURCE, async () => auth)
+    expect(report.authRequired).toBe(true)
+    expect(report.status).toBe('failed')
+    expect(symbols).toHaveLength(0)
+  })
 })
