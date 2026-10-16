@@ -45,15 +45,29 @@ export async function GET(request: Request) {
       }),
     }))
 
-  const [stockCount, lastRun] = await Promise.all([
+  const [stockCount, scannedCount, lastRun, running] = await Promise.all([
     prisma.stock.count(),
+    prisma.stock.count({ where: { fundamentals: { some: {} } } }),
     prisma.fetchRun.findFirst({ orderBy: { startedAt: 'desc' }, select: { status: true, endedAt: true, startedAt: true } }),
+    prisma.fetchRun.findFirst({
+      where: { status: 'RUNNING' },
+      orderBy: { startedAt: 'desc' },
+      select: { startedAt: true, sourceUrl: true, source: { select: { scanner: { select: { name: true } } } } },
+    }),
   ])
 
   return NextResponse.json({
     ok: true,
     scanners: scannersPayload,
-    summary: { scanners: scanners.length, stocks: stockCount, lastRun },
+    summary: {
+      scanners: scanners.length,
+      stocks: stockCount,
+      scanned: scannedCount,
+      lastRun,
+      running: running
+        ? { scanner: running.source.scanner.name, sourceUrl: running.sourceUrl, startedAt: running.startedAt }
+        : null,
+    },
   })
   } catch (error) {
     console.error('[admin/scanners] failed', error)

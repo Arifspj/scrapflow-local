@@ -28,7 +28,7 @@ CREATE TABLE "ScannerSource" (
     "url" TEXT NOT NULL,
     "pipelineMode" "PipelineMode" NOT NULL DEFAULT 'LIST_ONLY',
     "enabled" BOOLEAN NOT NULL DEFAULT true,
-    "fetchInterval" INTEGER NOT NULL DEFAULT 3600,
+    "fetchInterval" INTEGER NOT NULL DEFAULT 1800,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

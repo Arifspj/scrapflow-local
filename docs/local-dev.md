@@ -60,6 +60,19 @@ npx prisma dev stop scrapeflow
 
 Dev server: close its terminal, or kill the owning PID from the port check above (`Stop-Process -Id <pid>`).
 
+### One-shot scripts
+
+Two helper batch files live in the project root:
+
+- **`dev-restart.bat`** — stops everything (dev server + daemon), clears stale locks, then starts both
+  again and waits until the DB and app answer. Double-click it. Pass `stop` (`dev-restart.bat stop`) to
+  only stop.
+- **`auto-scan.bat`** — a local scheduler. Loops forever, pinging the cron endpoint
+  (`GET /api/cron/fetch?secret=…`) every 15 minutes so sources re-scan automatically and progressively
+  enrich the remaining stocks (there is no cron locally, so without this the app sits idle). Logs to
+  `%TEMP%\opencode\autoscan.log`. Stop with Ctrl+C or by closing the window. Optional first argument
+  overrides the interval in seconds, e.g. `auto-scan.bat 1800`.
+
 ## 4. Golden rules (read before debugging)
 
 1. **NEVER run `npx prisma dev rm scrapeflow --force`** unless you *want* to wipe the whole local
@@ -107,3 +120,15 @@ Typecheck / tests:
 npm run typecheck
 npm test
 ```
+
+## 7. Admin panel (http://localhost:3001/admin)
+
+Secret: `local-dev-secret`. The top tiles show DB totals and live ingestion state:
+
+- **Scanned** — stocks with a saved fundamental snapshot (the remaining ones get enriched progressively
+  by each run, 25 per source by default via `INGEST_MAX_ENRICH`).
+- **Scanning now** — `RUNNING` (live) while a fetch run executes, else `idle`. Polls every 4s.
+- **Scan now** button (header) — starts the scheduler immediately for every due source (fire-and-forget;
+  watch the *Scanning now* tile). Equivalent to `auto-scan.bat`'s ping.
+
+A source is only re-run once its `fetchInterval` (default 1 hour) has elapsed since its last run.

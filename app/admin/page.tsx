@@ -30,6 +30,10 @@ import { appendPromptToMarkdown } from '@/lib/copy-prompts'
 
 const SECRET_KEY = 'qscan:admin-secret'
 
+// A RUNNING run older than this is almost certainly a crashed/abandoned run
+// (imports finish in seconds/minutes), so we flag it instead of spinning forever.
+const RUNNING_STALE_MS = 30 * 60 * 1000
+
 type SourceRun = { status: string; endedAt: string | null; itemsFound: number; errorSummary: string | null } | null
 type Source = {
   id: string
@@ -51,7 +55,14 @@ type Scanner = {
   memberCount: number
   sources: Source[]
 }
-type Summary = { scanners: number; stocks: number; lastRun: { status: string; startedAt: string; endedAt: string | null } | null }
+type RunningRun = { scanner: string; sourceUrl: string; startedAt: string } | null
+type Summary = {
+  scanners: number
+  stocks: number
+  scanned: number
+  lastRun: { status: string; startedAt: string; endedAt: string | null } | null
+  running: RunningRun
+}
 type StockRow = {
   symbol: string
   companyName: string | null
@@ -220,6 +231,29 @@ export default function AdminPage() {
     if (!selected && scanners.length) setActiveScannerId(scanners[0].id)
   }, [scanners, selected])
 
+  // Keep the top summary (stocks / scanned / scanning-now) fresh without
+  // disturbing the rest of the page or its loading spinner.
+  useEffect(() => {
+    if (!authorized) return
+    let cancelled = false
+    async function tick() {
+      if (typeof document !== 'undefined' && document.hidden) return
+      try {
+        const response = await api('/api/admin/status')
+        if (!response.ok) return
+        const json = await response.json().catch(() => ({}))
+        if (!cancelled && json.summary) setSummary(json.summary)
+      } catch {
+        /* ignore transient polling errors */
+      }
+    }
+    const timer = window.setInterval(tick, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [authorized, api])
+
   function connect() {
     if (!secret.trim()) {
       setAuthError('Enter the ADMIN_SECRET value configured on the server.')
@@ -231,6 +265,22 @@ export default function AdminPage() {
       /* ignore */
     }
     void load()
+  }
+
+  async function scanNow() {
+    setBusy('scan')
+    setNotice('')
+    try {
+      const response = await api('/api/admin/scan', { method: 'POST' })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error || 'Could not run the scheduler.')
+      setNotice('Scan started — watch the “Scanning now” tile for live progress.')
+      await load()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Scan request failed.')
+    } finally {
+      setBusy(null)
+    }
   }
 
   async function addSource() {
@@ -519,6 +569,9 @@ export default function AdminPage() {
     )
   }
 
+  const running = summary?.running ?? null
+  const runningStale = running ? Date.now() - new Date(running.startedAt).getTime() > RUNNING_STALE_MS : false
+
   return (
     <main className="min-h-screen bg-[#050b14] text-slate-300">
       <header className="sticky top-0 z-20 border-b border-[#122238] bg-[#071120]/95 backdrop-blur">
@@ -532,6 +585,14 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-2">
             <a href="/" className="rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 hover:text-white">Public site</a>
+            <button
+              onClick={scanNow}
+              disabled={busy === 'scan'}
+              title="Run the scheduler now for every due source"
+              className="flex items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-60"
+            >
+              {busy === 'scan' ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />} Scan now
+            </button>
             <button onClick={() => load()} className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5">
               {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} Refresh
             </button>
@@ -559,9 +620,17 @@ export default function AdminPage() {
         <section className="min-w-0 space-y-4">
           {error && <div className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-xs text-rose-200">{error}</div>}
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Stat label="Scanners" value={String(summary?.scanners ?? scanners.length)} detail="canonical + custom" tone="text-sky-400" />
             <Stat label="Stocks in database" value={String(summary?.stocks ?? stocks.length)} detail="persisted Stock rows" tone="text-emerald-300" />
+            <Stat label="Scanned" value={String(summary?.scanned ?? '—')} detail="stocks with a saved snapshot" tone="text-cyan-300" />
+            <Stat
+              label="Scanning now"
+              value={running ? 'RUNNING' : 'idle'}
+              detail={running ? `${running.scanner} · since ${when(running.startedAt)}` : 'No scan in progress'}
+              tone={running ? (runningStale ? 'text-amber-300' : 'text-sky-300') : 'text-slate-500'}
+              live={Boolean(running) && !runningStale}
+            />
             <Stat label="Last run" value={summary?.lastRun ? summary.lastRun.status : 'never'} detail={when(summary?.lastRun?.startedAt ?? null)} tone="text-amber-300" />
           </div>
 
@@ -1057,12 +1126,15 @@ export default function AdminPage() {
   )
 }
 
-function Stat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {
+function Stat({ label, value, detail, tone, live = false }: { label: string; value: string; detail: string; tone: string; live?: boolean }) {
   return (
     <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{value}</p>
-      <p className={`mt-1 text-[13px] ${tone}`}>{detail}</p>
+      <p className="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-tight text-white">
+        {live && <Loader2 className="size-4 animate-spin text-sky-400" />}
+        {value}
+      </p>
+      <p className={`mt-1 truncate text-[13px] ${tone}`} title={detail}>{detail}</p>
     </div>
   )
 }

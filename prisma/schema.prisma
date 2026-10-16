@@ -66,7 +66,7 @@ model ScannerSource {
   url           String
   pipelineMode  PipelineMode      @default(LIST_ONLY)
   enabled       Boolean           @default(true)
-  fetchInterval Int               @default(3600)
+  fetchInterval Int               @default(1800)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   scanner       Scanner           @relation(fields: [scannerId], references: [id], onDelete: Cascade)
