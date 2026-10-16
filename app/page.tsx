@@ -106,11 +106,19 @@ export default async function HomePage({ searchParams }: Props) {
                 <span className="text-[13px] text-slate-500">{scanners.length} scanners</span>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {scanners.map(({ name, description }) => (
+                {scanners.map(({ name, description, count }) => (
                   <Link key={name} href={`/?scanner=${encodeURIComponent(name)}`} className="group flex flex-col justify-between rounded-xl border border-[#162844] bg-[#091527] p-4 transition hover:border-sky-500/60 hover:bg-[#0d1a2e]">
                     <div className="flex items-center justify-between">
                       <span className="text-[12px] font-semibold uppercase tracking-wider text-sky-400">Scanner</span>
-                      <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="rounded-full border border-[#23354E] bg-[#0d1a2e] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-300 group-hover:border-sky-400/50 group-hover:text-sky-300"
+                          title={`${count.toLocaleString('en-IN')} persisted member(s)`}
+                        >
+                          {count.toLocaleString('en-IN')}
+                        </span>
+                        <span className="flex size-7 items-center justify-center rounded-full border border-[#23354E] text-slate-400 transition group-hover:border-sky-400 group-hover:text-sky-300" aria-hidden>→</span>
+                      </span>
                     </div>
                     <h3 className="mt-3 text-sm font-semibold text-white group-hover:text-sky-300">{name}</h3>
                     <p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p>

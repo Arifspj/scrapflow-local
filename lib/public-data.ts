@@ -16,7 +16,7 @@ export const scannerCategories = [
 const CANONICAL_DESCRIPTIONS = new Map<string, string>(scannerCategories.map(([name, text]) => [name, text]))
 const CANONICAL_ORDER = new Map<string, number>(scannerCategories.map(([name], index) => [name, index]))
 
-export type PublicScannerOption = { name: string; description: string }
+export type PublicScannerOption = { name: string; description: string; count: number }
 
 /**
  * Every enabled scanner, straight from the DB, so a scanner created or renamed
@@ -26,11 +26,11 @@ export type PublicScannerOption = { name: string; description: string }
  * only when no scanner row exists yet.
  */
 export async function listPublicScanners(): Promise<PublicScannerOption[]> {
-  const canonical = () => scannerCategories.map(([name, text]) => ({ name, description: text }))
+  const canonical = () => scannerCategories.map(([name, text]) => ({ name, description: text, count: 0 }))
   try {
     const scanners = await prisma.scanner.findMany({
       where: { enabled: true },
-      select: { name: true, description: true },
+      select: { name: true, description: true, _count: { select: { stocks: true } } },
     })
     if (scanners.length === 0) return canonical()
 
@@ -38,6 +38,7 @@ export async function listPublicScanners(): Promise<PublicScannerOption[]> {
       .map((scanner) => ({
         name: scanner.name,
         description: scanner.description?.trim() || CANONICAL_DESCRIPTIONS.get(scanner.name) || 'Source-backed screen.',
+        count: scanner._count.stocks,
       }))
       .sort((a, b) => {
         const ai = CANONICAL_ORDER.get(a.name)
