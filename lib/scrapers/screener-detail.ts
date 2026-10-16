@@ -74,6 +74,19 @@ function textOf(element: CheerioSelection): string {
   return element.text().replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Screener nests explanatory help text in an info tooltip inside the label
+ * cell — the "CFO/EBITDA" row carries "Share of operating profit converting
+ * into cash: CFO (before tax) / Operating Profit" that way. Only the metric
+ * name belongs in the stored row label, so the tooltip wrapper is dropped
+ * before the text is read.
+ */
+function labelTextOf(element: CheerioSelection): string {
+  const clone = element.clone()
+  clone.find('.has-tooltip').remove()
+  return textOf(clone)
+}
+
 function parseDetailTable($: cheerio.CheerioAPI, table: CheerioSelection): DetailTable | null {
   const headerCells = table
     .find('thead th')
@@ -85,7 +98,7 @@ function parseDetailTable($: cheerio.CheerioAPI, table: CheerioSelection): Detai
   table.find('tbody tr').each((_, tr) => {
     const cells = $(tr).find('td, th')
     if (cells.length < 2) return
-    const label = cleanLabel(textOf(cells.first()))
+    const label = cleanLabel(labelTextOf(cells.first()))
     if (!label) return
     const values = cells
       .slice(1)

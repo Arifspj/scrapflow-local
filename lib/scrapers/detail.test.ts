@@ -35,7 +35,15 @@ const HTML = `<!doctype html><html><body>
 </table></section>
 <section id="cash-flow"><table>
   <thead><tr><th></th><th>Mar 2024</th><th>Mar 2025</th></tr></thead>
-  <tbody><tr><td>Cash from Operating Activity +</td><td>-27</td><td>30</td></tr></tbody>
+  <tbody>
+    <tr><td>Cash from Operating Activity +</td><td>-27</td><td>30</td></tr>
+    <tr class="sub"><td class="text">CFO/EBITDA
+      <span class="has-tooltip">
+        <i class="icon-info sub"></i>
+        <span class="tooltip position-area-top-center" style="width: 250px">Share of operating profit converting into cash: CFO (before tax) / Operating Profit</span>
+      </span>
+    </td><td class=""></td><td class="">22%</td></tr>
+  </tbody>
 </table></section>
 <section id="ratios"><table>
   <thead><tr><th></th><th>Mar 2025</th><th>Mar 2026</th></tr></thead>
@@ -88,6 +96,11 @@ describe('parseScreenerDetail', () => {
   it('parses shareholding and cash flow sections', () => {
     expect(detail.shareholding.quarterly?.rows.map((row) => row.label)).toEqual(['Promoters', 'FIIs'])
     expect(findRow(detail.cashFlow, 'cash from operating')?.values).toEqual(['-27', '30'])
+  })
+
+  it('keeps only the metric name when screener nests a help tooltip in the label', () => {
+    expect(detail.cashFlow?.rows.map((row) => row.label)).toEqual(['Cash from Operating Activity', 'CFO/EBITDA'])
+    expect(findRow(detail.cashFlow, 'cfo/ebitda')?.values).toEqual(['', '22%'])
   })
 
   it('derives fundamentals from the detail', () => {
