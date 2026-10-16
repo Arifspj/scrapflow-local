@@ -251,27 +251,76 @@ export async function previewSource(rawUrl: string): Promise<SourcePreview> {
   }
 }
 
+/**
+ * Persist a batch of discovered items.
+ *
+ * This used to run four sequential queries per row (stock lookup + upsert,
+ * snapshot lookup + create, membership upsert), which for a large listing is
+ * thousands of round-trips and dominated the whole import. Everything here is
+ * now a fixed handful of set-based statements: one read to see what already
+ * exists, one bulk create for the missing rows, then bulk snapshot and
+ * membership writes. Created/updated counters and the "never overwrite an
+ * existing snapshot" rule are unchanged.
+ */
 async function persistItems(scannerId: string, sourceId: string, items: IngestItem[]): Promise<{ created: number; updated: number; memberships: number }> {
-  let created = 0
-  let updated = 0
-  let memberships = 0
-  for (const item of items) {
-    const existing = await prisma.stock.findUnique({ where: { symbol: item.symbol }, select: { id: true } })
-    const stock = await prisma.stock.upsert({
-      where: { symbol: item.symbol },
-      create: { symbol: item.symbol, companyName: item.companyName },
-      update: item.companyName ? { companyName: item.companyName } : {},
-      select: { id: true },
-    })
-    if (existing) updated += 1
-    else created += 1
+  if (!items.length) return { created: 0, updated: 0, memberships: 0 }
 
-    if (item.metrics) {
-      const snapshot = await prisma.stockFundamentalSnapshot.findFirst({ where: { stockId: stock.id }, select: { id: true } })
-      if (!snapshot) {
-        const capturedAt = new Date()
+  const symbols = items.map((item) => item.symbol)
+  const known = await prisma.stock.findMany({
+    where: { symbol: { in: symbols } },
+    select: { id: true, symbol: true, companyName: true },
+  })
+  const knownSymbols = new Set(known.map((row) => row.symbol))
+  const missing = items.filter((item) => !knownSymbols.has(item.symbol))
+  const created = missing.length
+  const updated = items.length - created
+
+  if (missing.length) {
+    await prisma.stock.createMany({
+      data: missing.map((item) => ({ symbol: item.symbol, companyName: item.companyName })),
+      skipDuplicates: true,
+    })
+  }
+
+  // Re-read so every item resolves to a real id even if a concurrent import
+  // inserted some of the rows the create above skipped.
+  const stockRows = await prisma.stock.findMany({
+    where: { symbol: { in: symbols } },
+    select: { id: true, symbol: true, companyName: true },
+  })
+  const stockIdBySymbol = new Map(stockRows.map((row) => [row.symbol, row.id]))
+  const itemBySymbol = new Map(items.map((item) => [item.symbol, item]))
+
+  for (const row of stockRows) {
+    const name = itemBySymbol.get(row.symbol)?.companyName
+    if (name && name !== row.companyName) {
+      await prisma.stock.update({ where: { id: row.id }, data: { companyName: name } })
+    }
+  }
+
+  const snapshotItems = items.filter((item) => item.metrics || item.ipoMetrics)
+  if (snapshotItems.length) {
+    const snapshotStockIds = snapshotItems
+      .map((item) => stockIdBySymbol.get(item.symbol))
+      .filter((id): id is string => typeof id === 'string')
+    const taken = new Set(
+      (
+        await prisma.stockFundamentalSnapshot.findMany({
+          where: { stockId: { in: snapshotStockIds } },
+          select: { stockId: true },
+        })
+      ).map((row) => row.stockId),
+    )
+
+    const capturedAt = new Date()
+    const snapshots: Prisma.StockFundamentalSnapshotCreateManyInput[] = []
+    for (const item of snapshotItems) {
+      const stockId = stockIdBySymbol.get(item.symbol)
+      if (!stockId || taken.has(stockId)) continue
+
+      if (item.metrics) {
         const data = {
-          stockId: stock.id,
+          stockId,
           capturedAt,
           marketCap: decimal(item.metrics.marketCap),
           peRatio: decimal(item.metrics.pe),
@@ -281,39 +330,53 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
           parserVersion: 'screener-market@1.0.0',
           rawData: { source: 'screener-market', sourceUrl: item.sourceUrl, metrics: { ...item.metrics } } as Prisma.InputJsonValue,
         }
-        await prisma.stockFundamentalSnapshot.create({
-          data: { ...data, viewSummary: buildViewSummary(item, data) },
-        })
-      }
-    } else if (item.ipoMetrics) {
-      const snapshot = await prisma.stockFundamentalSnapshot.findFirst({ where: { stockId: stock.id }, select: { id: true } })
-      if (!snapshot) {
+        snapshots.push({ ...data, viewSummary: buildViewSummary(item, data) } as Prisma.StockFundamentalSnapshotCreateManyInput)
+      } else if (item.ipoMetrics) {
         // Listing-time IPO figures are stored as raw data only; the detail page
         // (fetched by enrichment) replaces this snapshot with real fundamentals.
-        const capturedAt = new Date()
         const data = {
-          stockId: stock.id,
+          stockId,
           capturedAt,
           sourceUrl: item.sourceUrl,
           parserVersion: 'screener-ipo@1.0.0',
           rawData: { source: 'screener-ipo', sourceUrl: item.sourceUrl, metrics: { ...item.ipoMetrics } } as Prisma.InputJsonValue,
         }
-        await prisma.stockFundamentalSnapshot.create({
-          data: { ...data, viewSummary: buildViewSummary(item, data) },
-        })
+        snapshots.push({ ...data, viewSummary: buildViewSummary(item, data) } as Prisma.StockFundamentalSnapshotCreateManyInput)
       }
     }
-
-    await prisma.scannerStock.upsert({
-      where: { scannerId_stockId: { scannerId, stockId: stock.id } },
-      create: { scannerId, stockId: stock.id, sourceId },
-      update: { lastSeenAt: new Date(), sourceId },
-    })
-    memberships += 1
+    if (snapshots.length) {
+      await prisma.stockFundamentalSnapshot.createMany({ data: snapshots })
+    }
   }
-  // New stocks / snapshots / memberships were written, so the dashboard memo is
-  // stale. Invalidate locally; other instances notice via the DB signature.
-  if (memberships) invalidateOpportunityCache()
+
+  const stockIds = items
+    .map((item) => stockIdBySymbol.get(item.symbol))
+    .filter((id): id is string => typeof id === 'string')
+  const memberships = stockIds.length
+  if (memberships) {
+    const linked = new Set(
+      (
+        await prisma.scannerStock.findMany({
+          where: { scannerId, stockId: { in: stockIds } },
+          select: { stockId: true },
+        })
+      ).map((row) => row.stockId),
+    )
+    const fresh = stockIds.filter((id) => !linked.has(id))
+    if (fresh.length) {
+      await prisma.scannerStock.createMany({
+        data: fresh.map((stockId) => ({ scannerId, stockId, sourceId })),
+        skipDuplicates: true,
+      })
+    }
+    await prisma.scannerStock.updateMany({
+      where: { scannerId, stockId: { in: stockIds } },
+      data: { lastSeenAt: new Date(), sourceId },
+    })
+    // New stocks / snapshots / memberships were written, so the dashboard memo
+    // is stale. Invalidate locally; other instances notice via the DB signature.
+    invalidateOpportunityCache()
+  }
   return { created, updated, memberships }
 }
 
