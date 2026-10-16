@@ -3,7 +3,6 @@ import { Suspense } from 'react'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPublicSnapshot, listPublicScanners } from '@/lib/public-data'
-import { buildStockView } from '@/lib/stock-detail'
 import { findStocksByQuery, upsertStockFromScrape } from '@/lib/stocks'
 import { rateLimited, scrapeScreenerCompany } from '@/lib/scrapers/resolve'
 import { AutoRefresh } from './auto-refresh'
@@ -55,22 +54,22 @@ export default async function HomePage({ searchParams }: Props) {
   const scanners = await listPublicScanners()
   const scanner = data.scanner
   const rows = data.rows.map((row) => {
-    const view = buildStockView(row.stock, row.stock.fundamentals[0])
+    const view = row.stock.list?.view
     return {
       id: row.stock.id,
       symbol: row.stock.symbol,
       company: row.stock.companyName || row.stock.symbol,
-      ltp: view.price,
-      iv: view.valuation.intrinsic,
-      mos: view.valuation.marginOfSafety,
-      pe: view.pe,
-      marketCap: view.marketCap,
-      roce: view.roce,
-      de: view.debtToEquity,
-      salesYoy: view.salesYoy,
-      opProfitYoy: view.operatingProfitYoy,
-      netProfitYoy: view.profitYoy,
-      score: view.score,
+      ltp: view?.price ?? null,
+      iv: view?.valuation.intrinsic ?? null,
+      mos: view?.valuation.marginOfSafety ?? null,
+      pe: view?.pe ?? null,
+      marketCap: view?.marketCap ?? null,
+      roce: view?.roce ?? null,
+      de: view?.debtToEquity ?? null,
+      salesYoy: view?.salesYoy ?? null,
+      opProfitYoy: view?.operatingProfitYoy ?? null,
+      netProfitYoy: view?.profitYoy ?? null,
+      score: view?.score ?? null,
       updated: row.lastSeenAt.toISOString(),
     }
   })

@@ -2,7 +2,8 @@ import { Prisma } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { cleanSymbol } from '@/lib/scrapers/screener'
-import { buildStockView, isScreenerDetail } from '@/lib/stock-detail'
+import { isScreenerDetail } from '@/lib/stock-detail'
+import { buildListStockView, summarizeListStockView } from '@/lib/view-summary'
 import { recordMetricHistory } from '@/lib/metric-history'
 import { invalidateOpportunityCache } from '@/lib/opportunity-cache'
 import { rateLimited, scrapeScreenerCompany, scrapeScreenerSymbol, type ScrapedCompany } from '@/lib/scrapers/resolve'
@@ -54,32 +55,36 @@ export async function upsertStockFromScrape(company: ScrapedCompany): Promise<St
 
   const f = company.fundamentals ?? {}
   await prisma.stockFundamentalSnapshot.deleteMany({ where: { stockId: stock.id } })
-  const snapshot = await prisma.stockFundamentalSnapshot.create({
-    data: {
-      stockId: stock.id,
-      marketCap: toDecimal(f.marketCap),
-      peRatio: toDecimal(f.peRatio),
-      bookValue: toDecimal(f.bookValue),
-      dividendYield: toDecimal(f.dividendYield),
-      roce: toDecimal(f.roce),
-      roe: toDecimal(f.roe),
-      debtToEquity: toDecimal(f.debtToEquity),
-      revenue: toDecimal(f.revenue),
-      netProfit: toDecimal(f.netProfit),
-      rawData: company.detail
-        ? (company.detail as unknown as Prisma.InputJsonValue)
-        : Object.keys(f).length
-          ? (f as Prisma.InputJsonValue)
-          : undefined,
-      sourceUrl: company.sourceUrl,
-      parserVersion: company.parserVersion,
-    },
+  const capturedAt = new Date()
+  const snapshotData = {
+    stockId: stock.id,
+    capturedAt,
+    marketCap: toDecimal(f.marketCap),
+    peRatio: toDecimal(f.peRatio),
+    bookValue: toDecimal(f.bookValue),
+    dividendYield: toDecimal(f.dividendYield),
+    roce: toDecimal(f.roce),
+    roe: toDecimal(f.roe),
+    debtToEquity: toDecimal(f.debtToEquity),
+    revenue: toDecimal(f.revenue),
+    netProfit: toDecimal(f.netProfit),
+    rawData: company.detail
+      ? (company.detail as unknown as Prisma.InputJsonValue)
+      : Object.keys(f).length
+        ? (f as Prisma.InputJsonValue)
+        : undefined,
+    sourceUrl: company.sourceUrl,
+    parserVersion: company.parserVersion,
+  }
+  const list = buildListStockView(stock, snapshotData)
+  await prisma.stockFundamentalSnapshot.create({
+    data: { ...snapshotData, viewSummary: summarizeListStockView(list) },
   })
 
   // Append the small change-tracking row. A history failure must never break the
   // import itself, so it is isolated and only logged.
   try {
-    await recordMetricHistory(stock.id, buildStockView(stock, snapshot))
+    await recordMetricHistory(stock.id, list.view)
   } catch (error) {
     console.error(`[stocks] failed to record metric history for ${stock.symbol}`, error)
   }

@@ -400,8 +400,13 @@ async function buildTickerContext(scanner: string | null, market: string | null)
   if (scanner) {
     const snap = await getPublicSnapshot(scanner, '', 200)
     const items: TickerItem[] = snap.rows.map((row) => {
-      const v = buildStockView(row.stock, row.stock.fundamentals[0] ?? null)
-      return { symbol: v.symbol, company: v.companyName || v.symbol, price: v.price, score: v.score }
+      const view = row.stock.list?.view
+      return {
+        symbol: row.stock.symbol,
+        company: row.stock.companyName || row.stock.symbol,
+        price: view?.price ?? null,
+        score: view?.score ?? null,
+      }
     })
     if (items.length < 2) return null
     return {

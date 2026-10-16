@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { buildStockView, type StockView } from '@/lib/stock-detail'
+import type { ListStockView } from '@/lib/view-summary'
+import { resolveListViews } from '@/lib/list-views'
 import { computeOpportunity, isFinancialIndustry, opportunityInputFromView } from '@/lib/opportunity'
 import {
   computeMultibaggerV2,
@@ -11,13 +13,14 @@ import {
   type MultiMember,
   type MetricHistoryDelta,
   type MultibaggerContext,
+  type MultibaggerDetailInputs,
   type MultibaggerResult,
 } from '@/lib/multibagger'
 import { symbolIdentity } from '@/lib/identity'
 import type { GrowthReading } from '@/lib/growth-quality'
 import { buildFlags, hasRiskInputs, type StockFlag } from '@/lib/stock-flags'
-import { assessTurnaround, type TurnaroundAssessment } from '@/lib/turnaround'
-import { ownershipTrend, type OwnershipTrend } from '@/lib/ownership'
+import type { TurnaroundAssessment } from '@/lib/turnaround'
+import type { OwnershipTrend } from '@/lib/ownership'
 import { summarizeSectors, type SectorInput, type SectorSummary } from '@/lib/sector-map'
 import {
   ageOfOpportunityCache,
@@ -166,14 +169,20 @@ function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | n
   return { sector: broad?.name ?? null, industry: deep?.name ?? null }
 }
 
-function toRow(stock: StockForRow, view: StockView): OpportunityRow {
+type ListExtras = {
+  ownership: OwnershipTrend | null
+  turnaround: TurnaroundAssessment | null
+  multibaggerInputs: MultibaggerDetailInputs
+}
+
+function toRow(stock: StockForRow, view: StockView, extras: ListExtras): OpportunityRow {
   const input = opportunityInputFromView(view)
   const opportunity = computeOpportunity(input)
   const isFinancial = isFinancialIndustry(view.industry)
   const { sector, industry } = sectorOf(view)
   const broadHref = view.industry[0]?.url ? view.industry[0].url!.replace(/\/$/, '') : null
   const valuationValid = view.price != null && view.price > 0 && view.valuation.intrinsic != null && view.valuation.intrinsic >= 1
-  const ownership = ownershipTrend(view.detail?.shareholding)
+  const ownership = extras.ownership
 
   return {
     symbol: stock.symbol,
@@ -205,7 +214,7 @@ function toRow(stock: StockForRow, view: StockView): OpportunityRow {
     qoqProfitGrowth: input.qoqProfitGrowth,
     flags: buildFlags(view, isFinancial),
     riskInputsAvailable: hasRiskInputs(view, isFinancial),
-    turnaround: assessTurnaround(view.detail),
+    turnaround: extras.turnaround,
     ownership,
     components: opportunity.parts.map((part) => ({
       key: part.key,
@@ -222,7 +231,7 @@ function toRow(stock: StockForRow, view: StockView): OpportunityRow {
     // Provisional: recomputed in buildDashboard once this stock's scanner
     // memberships and cross-run metric history have been loaded.
     multibagger: computeMultibaggerV2(
-      multibaggerInputFromView(view, { isFinancial, memberships: [], ownership, history: null }),
+      multibaggerInputFromView(view, { isFinancial, memberships: [], ownership, history: null }, extras.multibaggerInputs),
     ),
   }
 }
@@ -286,7 +295,16 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
   const [stocks, membershipRows, scanners, lastRun, latestSnapshot] = await Promise.all([
     prisma.stock.findMany({
       where: { fundamentals: { some: {} } },
-      include: { fundamentals: { orderBy: { capturedAt: 'desc' as const }, take: 1 } },
+      select: {
+        id: true,
+        symbol: true,
+        companyName: true,
+        fundamentals: {
+          orderBy: { capturedAt: 'desc' as const },
+          take: 1,
+          select: { viewSummary: true },
+        },
+      },
     }),
     prisma.scannerStock.findMany({
       where: { scanner: { enabled: true } },
@@ -316,18 +334,29 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     else membershipsByStock.set(row.stockId, [member])
   }
 
+  // Rows written before viewSummary existed (or by a path that skipped it) fall
+  // back to decoding rawData for just those snapshots, so behaviour is unchanged
+  // until the backfill catches up and nothing silently disappears.
+  const lists = await resolveListViews(
+    stocks.map((stock) => ({
+      id: stock.id,
+      symbol: stock.symbol,
+      companyName: stock.companyName,
+      summary: stock.fundamentals[0]?.viewSummary,
+    })),
+  )
+
   const rowsWithId = stocks
     .map((stock) => {
-      const snapshot = stock.fundamentals[0]
-      if (!snapshot) return null
-      const view = buildStockView(stock, snapshot)
-      return { id: stock.id, view, row: toRow(stock, view) }
+      const list = lists.get(stock.id)
+      if (!list) return null
+      return { id: stock.id, list, row: toRow(stock, list.view, list) }
     })
-    .filter((entry): entry is { id: string; view: StockView; row: OpportunityRow } => entry != null)
+    .filter((entry): entry is { id: string; list: ListStockView; row: OpportunityRow } => entry != null)
 
   const evaluable = rowsWithId.filter((entry) => entry.row.coveragePct >= RADAR_MIN_COVERAGE)
   const movement = await loadMovement(evaluable.map((entry) => entry.id))
-  for (const { id, view, row } of rowsWithId) {
+  for (const { id, list, row } of rowsWithId) {
     const window = movement.get(id)
     row.movement =
       window && row.opportunity != null ? { delta: row.opportunity - window.baseline, days: window.days } : null
@@ -340,7 +369,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
       ownership: row.ownership,
       history: window?.history ?? null,
     }
-    row.multibagger = computeMultibaggerV2(multibaggerInputFromView(view, context))
+    row.multibagger = computeMultibaggerV2(multibaggerInputFromView(list.view, context, list.multibaggerInputs))
   }
 
   const rows = rowsWithId.map((entry) => entry.row)
@@ -544,6 +573,4 @@ export function clearOpportunityCache(): void {
   invalidateOpportunityCache()
 }
 
-type StockForRow = Prisma.StockGetPayload<{
-  include: { fundamentals: { orderBy: { capturedAt: 'desc' }; take: 1 } }
-}>
+type StockForRow = { symbol: string; companyName: string | null }

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { collectMarketCategory, type MarketImportReport } from '@/lib/market-collect'
 import { marketCategoryUrl, type MarketCompanyRow } from '@/lib/scrapers/screener-market'
 import { screenerFetchText } from '@/lib/scrapers/screener-auth'
+import { buildViewSummary } from '@/lib/view-summary'
 
 /**
  * Persist a screener.in industry listing to the database.
@@ -73,21 +74,24 @@ async function persistRows(scannerId: string, rows: MarketCompanyRow[]): Promise
     if (snapshot) {
       result.snapshotSkipped += 1
     } else {
-      await prisma.stockFundamentalSnapshot.create({
-        data: {
-          stockId: stock.id,
-          marketCap: decimal(row.metrics.marketCap),
-          peRatio: decimal(row.metrics.pe),
-          dividendYield: decimal(row.metrics.dividendYield),
-          roce: decimal(row.metrics.roce),
+      const capturedAt = new Date()
+      const data = {
+        stockId: stock.id,
+        capturedAt,
+        marketCap: decimal(row.metrics.marketCap),
+        peRatio: decimal(row.metrics.pe),
+        dividendYield: decimal(row.metrics.dividendYield),
+        roce: decimal(row.metrics.roce),
+        sourceUrl: row.sourceUrl,
+        parserVersion: 'screener-market@1.0.0',
+        rawData: {
+          source: 'screener-market',
           sourceUrl: row.sourceUrl,
-          parserVersion: 'screener-market@1.0.0',
-          rawData: {
-            source: 'screener-market',
-            sourceUrl: row.sourceUrl,
-            metrics: { ...row.metrics },
-          } as Prisma.InputJsonValue,
-        },
+          metrics: { ...row.metrics },
+        } as Prisma.InputJsonValue,
+      }
+      await prisma.stockFundamentalSnapshot.create({
+        data: { ...data, viewSummary: buildViewSummary(row, data) },
       })
     }
 

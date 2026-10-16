@@ -590,7 +590,16 @@ function pctChange(series: { value: number }[]): number | null {
   return Number((((latest - prior) / Math.abs(prior)) * 100).toFixed(2))
 }
 
-export function multibaggerInputFromView(view: StockView, ctx: MultibaggerContext): MultibaggerInput {
+export type MultibaggerDetailInputs = {
+  qoqProfitGrowth: MultibaggerInput['qoqProfitGrowth']
+  profitAccelerationPp: number | null
+  salesAccelerationPp: number | null
+  roceTrendPp: number | null
+  opmTrendPp: number | null
+  debtChangePct: number | null
+}
+
+export function multibaggerDetailInputs(view: StockView): MultibaggerDetailInputs {
   const detail = view.detail
   const qoqProfitGrowth =
     view.growth && detail
@@ -604,9 +613,25 @@ export function multibaggerInputFromView(view: StockView, ctx: MultibaggerContex
       : null
 
   const opm = opmSeries(detail?.profitLoss)
-  const opmTrendPp = opm.length >= 2 ? Number((opm[opm.length - 1] - opm[opm.length - 2]).toFixed(2)) : null
   const borrowings = annualSeriesWithLabels(detail?.balanceSheet, 'borrowings')
 
+  return {
+    qoqProfitGrowth,
+    profitAccelerationPp:
+      acceleration(detail?.quarters, 'net profit') ?? acceleration(detail?.profitLoss, 'net profit'),
+    salesAccelerationPp: acceleration(detail?.quarters, 'sales') ?? acceleration(detail?.profitLoss, 'sales'),
+    roceTrendPp: trendDelta(detail?.ratios, 'roce'),
+    opmTrendPp: opm.length >= 2 ? Number((opm[opm.length - 1] - opm[opm.length - 2]).toFixed(2)) : null,
+    debtChangePct: pctChange(borrowings),
+  }
+}
+
+export function multibaggerInputFromView(
+  view: StockView,
+  ctx: MultibaggerContext,
+  detailInputs?: MultibaggerDetailInputs | null,
+): MultibaggerInput {
+  const derived = detailInputs ?? multibaggerDetailInputs(view)
   const categories = new Set(ctx.memberships.map((member) => member.category))
   const firstSeen = ctx.memberships.length
     ? Math.min(...ctx.memberships.map((member) => member.firstSeenAt.getTime()))
@@ -619,17 +644,16 @@ export function multibaggerInputFromView(view: StockView, ctx: MultibaggerContex
     isFinancial: ctx.isFinancial,
     profitYoy: view.profitGrowth,
     salesYoy: view.salesGrowth,
-    qoqProfitGrowth,
-    profitAccelerationPp:
-      acceleration(detail?.quarters, 'net profit') ?? acceleration(detail?.profitLoss, 'net profit'),
-    salesAccelerationPp: acceleration(detail?.quarters, 'sales') ?? acceleration(detail?.profitLoss, 'sales'),
+    qoqProfitGrowth: derived.qoqProfitGrowth,
+    profitAccelerationPp: derived.profitAccelerationPp,
+    salesAccelerationPp: derived.salesAccelerationPp,
     roce: view.roce,
     roe: view.roe,
-    roceTrendPp: trendDelta(detail?.ratios, 'roce'),
-    opmTrendPp,
+    roceTrendPp: derived.roceTrendPp,
+    opmTrendPp: derived.opmTrendPp,
     cfoPat: view.cfoPat,
     debtToEquity: view.debtToEquity,
-    debtChangePct: pctChange(borrowings),
+    debtChangePct: derived.debtChangePct,
     marginOfSafety: view.valuation.marginOfSafety,
     pe: view.pe,
     scannerCategoryCount: categories.size,

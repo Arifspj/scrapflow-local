@@ -16,6 +16,7 @@ import { rateLimited, resolveSymbolFromName, scrapeScreenerSymbol, scrapeScreene
 import { CHARTINK_PARSER_VERSION, fetchChartinkScan } from '@/lib/scrapers/chartink'
 import { isNumericCode, pendingEnrichmentSymbols } from '@/lib/enrich-queue'
 import { upsertStockFromScrape } from '@/lib/stocks'
+import { buildViewSummary } from '@/lib/view-summary'
 import { invalidateOpportunityCache } from '@/lib/opportunity-cache'
 
 /**
@@ -268,17 +269,20 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
     if (item.metrics) {
       const snapshot = await prisma.stockFundamentalSnapshot.findFirst({ where: { stockId: stock.id }, select: { id: true } })
       if (!snapshot) {
+        const capturedAt = new Date()
+        const data = {
+          stockId: stock.id,
+          capturedAt,
+          marketCap: decimal(item.metrics.marketCap),
+          peRatio: decimal(item.metrics.pe),
+          dividendYield: decimal(item.metrics.dividendYield),
+          roce: decimal(item.metrics.roce),
+          sourceUrl: item.sourceUrl,
+          parserVersion: 'screener-market@1.0.0',
+          rawData: { source: 'screener-market', sourceUrl: item.sourceUrl, metrics: { ...item.metrics } } as Prisma.InputJsonValue,
+        }
         await prisma.stockFundamentalSnapshot.create({
-          data: {
-            stockId: stock.id,
-            marketCap: decimal(item.metrics.marketCap),
-            peRatio: decimal(item.metrics.pe),
-            dividendYield: decimal(item.metrics.dividendYield),
-            roce: decimal(item.metrics.roce),
-            sourceUrl: item.sourceUrl,
-            parserVersion: 'screener-market@1.0.0',
-            rawData: { source: 'screener-market', sourceUrl: item.sourceUrl, metrics: { ...item.metrics } } as Prisma.InputJsonValue,
-          },
+          data: { ...data, viewSummary: buildViewSummary(item, data) },
         })
       }
     } else if (item.ipoMetrics) {
@@ -286,13 +290,16 @@ async function persistItems(scannerId: string, sourceId: string, items: IngestIt
       if (!snapshot) {
         // Listing-time IPO figures are stored as raw data only; the detail page
         // (fetched by enrichment) replaces this snapshot with real fundamentals.
+        const capturedAt = new Date()
+        const data = {
+          stockId: stock.id,
+          capturedAt,
+          sourceUrl: item.sourceUrl,
+          parserVersion: 'screener-ipo@1.0.0',
+          rawData: { source: 'screener-ipo', sourceUrl: item.sourceUrl, metrics: { ...item.ipoMetrics } } as Prisma.InputJsonValue,
+        }
         await prisma.stockFundamentalSnapshot.create({
-          data: {
-            stockId: stock.id,
-            sourceUrl: item.sourceUrl,
-            parserVersion: 'screener-ipo@1.0.0',
-            rawData: { source: 'screener-ipo', sourceUrl: item.sourceUrl, metrics: { ...item.ipoMetrics } } as Prisma.InputJsonValue,
-          },
+          data: { ...data, viewSummary: buildViewSummary(item, data) },
         })
       }
     }

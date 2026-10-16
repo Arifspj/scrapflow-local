@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { buildStockView, isScreenerDetail, type StockView } from '@/lib/stock-detail'
+import type { StockView } from '@/lib/stock-detail'
+import { resolveListViews } from '@/lib/list-views'
 import { marketCategoryUrl } from '@/lib/scrapers/screener-market'
 import {
   industryTrail,
@@ -84,29 +85,46 @@ export async function getCategoryData(segments: readonly string[]): Promise<Cate
 
   const [stocks, scanner] = await Promise.all([
     prisma.stock.findMany({
-      include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } },
+      select: {
+        id: true,
+        symbol: true,
+        companyName: true,
+        fundamentals: {
+          orderBy: { capturedAt: 'desc' as const },
+          take: 1,
+          select: { viewSummary: true },
+        },
+      },
       orderBy: { symbol: 'asc' },
       take: 2000,
     }),
     prisma.scanner.findFirst({ where: { category: 'Industry', name: sourceUrl }, select: { id: true, description: true } }),
   ])
 
+  const lists = await resolveListViews(
+    stocks.map((stock) => ({
+      id: stock.id,
+      symbol: stock.symbol,
+      companyName: stock.companyName,
+      summary: stock.fundamentals[0]?.viewSummary,
+    })),
+  )
+
   const rows: CategoryStockRow[] = []
   const seen = new Set<string>()
   let trail: CategoryCrumb[] = []
 
   for (const stock of stocks) {
-    const latest = stock.fundamentals[0]
-    if (!latest) continue
-    const rawData = latest.rawData
-    if (!isScreenerDetail(rawData) || !Array.isArray(rawData.industry)) continue
-    if (!isInCategory(rawData.industry, segments)) continue
+    const list = lists.get(stock.id)
+    if (!list) continue
+    const { view } = list
+    if (!view.industry.length) continue
+    if (!isInCategory(view.industry, segments)) continue
 
     if (trail.length === 0) {
-      trail = industryTrail(rawData.industry, segments).map((link) => ({ level: link.level, name: link.name, url: link.url }))
+      trail = industryTrail(view.industry, segments).map((link) => ({ level: link.level, name: link.name, url: link.url }))
     }
 
-    const view = buildStockView(stock, latest)
     rows.push(toRowFromView(view))
     seen.add(view.symbol)
   }
@@ -117,15 +135,37 @@ export async function getCategoryData(segments: readonly string[]): Promise<Cate
     imported = parseImportMeta(scanner.description)
     const members = await prisma.scannerStock.findMany({
       where: { scannerId: scanner.id },
-      include: { stock: { include: { fundamentals: { orderBy: { capturedAt: 'desc' }, take: 1 } } } },
+      select: {
+        stock: {
+          select: {
+            id: true,
+            symbol: true,
+            companyName: true,
+            fundamentals: {
+              orderBy: { capturedAt: 'desc' as const },
+              take: 1,
+              select: { viewSummary: true },
+            },
+          },
+        },
+      },
       orderBy: { lastSeenAt: 'desc' },
       take: 2000,
     })
+    const memberLists = await resolveListViews(
+      members.map((member) => ({
+        id: member.stock.id,
+        symbol: member.stock.symbol,
+        companyName: member.stock.companyName,
+        summary: member.stock.fundamentals[0]?.viewSummary,
+      })),
+    )
     for (const member of members) {
       if (seen.has(member.stock.symbol)) continue
-      const view = buildStockView(member.stock, member.stock.fundamentals[0] ?? null)
-      rows.push(toRowFromView(view))
-      seen.add(view.symbol)
+      const list = memberLists.get(member.stock.id)
+      if (!list) continue
+      rows.push(toRowFromView(list.view))
+      seen.add(list.view.symbol)
     }
     if (trail.length === 0) trail = parseStoredBreadcrumb(scanner.description)
   }
