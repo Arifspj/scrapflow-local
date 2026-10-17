@@ -99,4 +99,45 @@ describe('assessTurnaround', () => {
     expect(result!.signals.length).toBeGreaterThanOrEqual(2)
     expect(result!.score).toBeGreaterThanOrEqual(40)
   })
+
+  it('does not flag a still-negative cash-flow improvement as turning positive', () => {
+    const result = assessTurnaround(
+      detail({ cashFlow: table(['Mar 2024', 'Mar 2025'], { 'Cash from Operating Activity': [-9, -4] }) }),
+    )
+    const keys = result?.signals.map((signal) => signal.key) ?? []
+    expect(keys).not.toContain('cash-flow-turning-positive')
+    expect(keys).not.toContain('cash-flow-improving')
+    expect(result).toBeNull()
+  })
+
+  it('keeps a genuine negative-to-positive cash-flow swing as turning positive', () => {
+    const result = assessTurnaround(
+      detail({ cashFlow: table(['Mar 2024', 'Mar 2025'], { 'Cash from Operating Activity': [-9, 4] }) }),
+    )
+    const turning = result!.signals.find((signal) => signal.key === 'cash-flow-turning-positive')
+    expect(turning).toBeDefined()
+    expect(turning!.label).toBe('Operating cash turning positive')
+  })
+
+  it('does not describe cash flow that merely reached zero as turning positive', () => {
+    const result = assessTurnaround(
+      detail({ cashFlow: table(['Mar 2024', 'Mar 2025'], { 'Cash from Operating Activity': [-2, 0] }) }),
+    )
+    const keys = result?.signals.map((signal) => signal.key) ?? []
+    expect(keys).not.toContain('cash-flow-turning-positive')
+  })
+
+  it('compares the latest two annual periods and ignores a TTM column', () => {
+    const result = assessTurnaround(
+      detail({
+        cashFlow: table(['Mar 2024', 'Mar 2025', 'TTM'], {
+          'Cash from Operating Activity': [-9, 4, 6],
+        }),
+      }),
+    )
+    const turning = result!.signals.find((signal) => signal.key === 'cash-flow-turning-positive')!
+    expect(turning.detail).toContain('Mar 2024')
+    expect(turning.detail).toContain('Mar 2025')
+    expect(turning.detail).not.toContain('TTM')
+  })
 })

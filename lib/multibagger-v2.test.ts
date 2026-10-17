@@ -257,3 +257,67 @@ describe('v1 reproduction of production rows (reconstructed inputs)', () => {
     expect(computeMultibaggerV2(simca).coveragePct).toBe(43)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Ownership coverage. The dashboard renders `presentCount/totalCount` per
+// component, so these tests pin the ownership denominator at three (Promoter,
+// FII, DII) and confirm that a missing input lowers the evaluated maximum
+// instead of being scored as neutral.
+// ---------------------------------------------------------------------------
+
+describe('v2 ownership always carries the three intended submetrics', () => {
+  it('keeps a 3-denominator ownership component even when shareholding data is missing', () => {
+    const ownership = computeMultibaggerV2(base).parts.find((part) => part.key === 'ownership')!
+    expect(ownership.sub.map((sub) => sub.label)).toEqual(['Promoter Δ', 'FII Δ', 'DII Δ'])
+    expect(ownership.totalCount).toBe(3)
+    expect(ownership.presentCount).toBe(0)
+    expect(ownership.evaluated).toBe(false)
+    expect(ownership.sub.every((sub) => sub.value === null)).toBe(true)
+    expect(ownership.max).toBe(0)
+    expect(ownership.earned).toBe(0)
+  })
+
+  it('scales the ownership maximum per present input and never scores a missing one', () => {
+    const ownership = computeMultibaggerV2({ ...base, promoterChangePp: 0.4 }).parts.find(
+      (part) => part.key === 'ownership',
+    )!
+    expect(ownership.totalCount).toBe(3)
+    expect(ownership.presentCount).toBe(1)
+    expect(ownership.subCoveragePct).toBe(33)
+    // 5-point weight spread over 3 submetrics -> one present input is worth 5/3.
+    expect(ownership.max).toBeCloseTo(MULTIBAGGER_WEIGHTS.ownership / 3, 1)
+    // Promoter +0.4pp scores 60/100, so it earns 60% of that single 5/3 share.
+    expect(ownership.earned).toBeCloseTo((60 / 100) * (MULTIBAGGER_WEIGHTS.ownership / 3), 1)
+    expect(ownership.sub.find((sub) => sub.label === 'FII Δ')!.value).toBeNull()
+    expect(ownership.sub.find((sub) => sub.label === 'DII Δ')!.value).toBeNull()
+  })
+
+  it('reports full ownership coverage only when all three components are present', () => {
+    const ownership = computeMultibaggerV2(FULL).parts.find((part) => part.key === 'ownership')!
+    expect(ownership.presentCount).toBe(3)
+    expect(ownership.totalCount).toBe(3)
+    expect(ownership.subCoveragePct).toBe(100)
+    expect(ownership.max).toBe(MULTIBAGGER_WEIGHTS.ownership)
+    expect(ownership.earned).toBeLessThanOrEqual(ownership.max)
+  })
+
+  it('keeps the ownership maximum capped at its declared weight, never 3x', () => {
+    const ownership = computeMultibaggerV2({
+      ...base,
+      promoterChangePp: 0.4,
+      fiiChangePp: 0.2,
+      diiChangePp: 0.1,
+    }).parts.find((part) => part.key === 'ownership')!
+    expect(ownership.max).toBe(MULTIBAGGER_WEIGHTS.ownership)
+    expect(ownership.earned).toBeLessThanOrEqual(ownership.max)
+  })
+})
+
+describe('v2 valuation denominator (documents the separate 2/2 cells)', () => {
+  it('exposes exactly two valuation submetrics', () => {
+    const valuation = computeMultibaggerV2(FULL).parts.find((part) => part.key === 'valuation')!
+    expect(valuation.sub.map((sub) => sub.label)).toEqual(['Margin of safety', 'P/E'])
+    expect(valuation.totalCount).toBe(2)
+    expect(valuation.presentCount).toBe(2)
+  })
+})

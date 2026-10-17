@@ -395,7 +395,7 @@ const MAX_NUMERIC_LOOKUPS = 8
  * codes cannot exhaust the invocation budget, and an invented ticker is never
  * persisted (a code is kept verbatim, never fabricated).
  */
-async function resolveNumericMembers<T extends { symbol: string; companyName: string | null }>(
+export async function resolveNumericMembers<T extends { symbol: string; companyName: string | null }>(
   items: T[],
   warnings: string[],
   maxLookups: number,

@@ -161,7 +161,7 @@ export function assessTurnaround(detail: ScreenerDetail | null | undefined): Tur
   if (cfo.length >= 2) {
     const latest = cfo[cfo.length - 1]
     const prior = cfo[cfo.length - 2]
-    if (prior.value < 0 && latest.value >= 0) {
+    if (prior.value < 0 && latest.value > 0) {
       signals.push({
         key: 'cash-flow-turning-positive',
         label: 'Operating cash turning positive',
