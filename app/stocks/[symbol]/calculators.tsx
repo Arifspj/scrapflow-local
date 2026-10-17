@@ -18,6 +18,13 @@ function pct(value: number, digits = 1): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`
 }
 
+/** Rupee amount with an explicit leading sign, e.g. "+₹1,982" or "-₹1,982". */
+function signedInr(value: number, digits = 0): string {
+  if (!Number.isFinite(value)) return '—'
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${inr(Math.abs(value), digits)}`
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.min(Math.max(value, min), max)
@@ -46,6 +53,12 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
   const multiple = Number.isFinite(future) && pv > 0 ? future / pv : NaN
   const net = Number.isFinite(future) ? future - pv : NaN
   const roiPct = Number.isFinite(multiple) ? (multiple - 1) * 100 : NaN
+  const roiTone = !Number.isFinite(roiPct)
+    ? 'border-slate-600/50 bg-slate-900/70 text-slate-400'
+    : roiPct >= 0
+      ? 'border-emerald-500/50 bg-emerald-950/70 text-emerald-400'
+      : 'border-rose-500/50 bg-rose-950/70 text-rose-400'
+  const netTone = net > 0 ? 'text-emerald-400' : net < 0 ? 'text-rose-400' : 'text-slate-300'
 
   const WIDTH = 300
   const HEIGHT = 48
@@ -214,7 +227,7 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
           <div className="text-[9px] font-medium uppercase tracking-wider text-slate-400">Future Value</div>
           <div className="mt-0.5 font-mono text-sm font-black tabular-nums tracking-tight text-cyan-300">{inr(future)}</div>
           <div className="mt-0.5">
-            <span className="inline-flex items-center rounded border border-emerald-500/50 bg-emerald-950/70 px-1 py-px font-mono text-[8px] font-bold text-emerald-400">{pct(roiPct, 0)} ROI</span>
+            <span className={`inline-flex items-center rounded border px-1 py-px font-mono text-[8px] font-bold ${roiTone}`}>{pct(roiPct, 0)} ROI</span>
           </div>
         </div>
         <div className="flex flex-col justify-between border-x border-slate-800 px-1">
@@ -226,7 +239,7 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
         </div>
         <div className="flex flex-col justify-between">
           <div className="text-[9px] font-medium uppercase tracking-wider text-slate-400">Net Profit</div>
-          <div className="mt-0.5 font-mono text-sm font-black tabular-nums text-emerald-400">{Number.isFinite(net) ? `+${inr(net)}` : '—'}</div>
+          <div className={`mt-0.5 font-mono text-sm font-black tabular-nums ${netTone}`}>{signedInr(net)}</div>
           <div className="mt-0.5">
             <span className="font-mono text-[8px] text-slate-400">Reinvested</span>
           </div>
