@@ -8,6 +8,18 @@ describe('getMetricStatus', () => {
     expect(getMetricStatus('roce', 6)).toBe('bad')
     expect(getMetricStatus('roe', 18)).toBe('good')
     expect(getMetricStatus('roe', 4)).toBe('bad')
+    expect(getMetricStatus('opm', 20)).toBe('good')
+    expect(getMetricStatus('opm', 10)).toBe('warn')
+    expect(getMetricStatus('opm', 3)).toBe('bad')
+  })
+
+  it('treats upside as favourable and debt-to-assets as a risk', () => {
+    expect(getMetricStatus('upside', 20)).toBe('good')
+    expect(getMetricStatus('upside', 5)).toBe('warn')
+    expect(getMetricStatus('upside', -5)).toBe('bad')
+    expect(getMetricStatus('debtToAssets', 0.2)).toBe('good')
+    expect(getMetricStatus('debtToAssets', 0.5)).toBe('warn')
+    expect(getMetricStatus('debtToAssets', 0.9)).toBe('bad')
   })
 
   it('treats higher P/E and debt as risk, lower as favourable', () => {

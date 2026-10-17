@@ -34,6 +34,7 @@ import { getPublicSnapshot } from '@/lib/public-data'
 import { CashFlowTrend, GrowthCompareBars, OwnershipTrend, ValuationBridge } from './card-extras'
 import { RoceCalculator, TradeCalculator } from './calculators'
 import { ProfitLineChart, QuarterlyBarChart } from './charts'
+import { PriceVolumeChart } from './price-volume-chart'
 import { CopyDataMenu } from './copy-data-button'
 import { RefreshButton } from './refresh-button'
 import { ScoreBadge } from './score-breakdown'
@@ -546,9 +547,19 @@ export default async function StockPage({ params, searchParams }: Props) {
   const metrics: { label: string; value: string; tone: MetricTone; title?: string }[] = [
     { label: 'Market Cap', value: formatCr(view.marketCap), tone: 'neutral' },
     { label: 'P/E', value: formatNum(view.pe, 1), tone: getMetricStatus('pe', view.pe) },
-    { label: 'Intrinsic Value', value: formatInr(view.valuation.intrinsic, 0), tone: getMetricStatus('marginOfSafety', view.valuation.marginOfSafety) },
+    { label: 'IV', value: formatInr(view.valuation.intrinsic, 0), tone: getMetricStatus('marginOfSafety', view.valuation.marginOfSafety) },
+    { label: 'MOS', value: formatPct(view.valuation.marginOfSafety), tone: getMetricStatus('marginOfSafety', view.valuation.marginOfSafety) },
     { label: 'ROCE', value: formatPct(view.roce), tone: getMetricStatus('roce', view.roce) },
     { label: 'ROE', value: formatPct(view.roe), tone: getMetricStatus('roe', view.roe) },
+    {
+      label: 'OPM',
+      value: formatPct(view.opm),
+      tone: getMetricStatus('opm', view.opm),
+      title: view.opm != null
+        ? 'Operating Profit Margin = operating profit ÷ sales (latest reported period).'
+        : 'Operating margin is not reported by this source.',
+    },
+    { label: 'EPS', value: formatInr(view.eps, 2), tone: 'neutral', title: 'Earnings per share (latest reported period).' },
     { label: 'CFO / PAT', value: view.cfoPat != null ? view.cfoPat.toFixed(2) : '—', tone: getMetricStatus('cfoPat', view.cfoPat) },
     {
       label: 'Piotroski F',
@@ -560,9 +571,16 @@ export default async function StockPage({ params, searchParams }: Props) {
           ? 'Piotroski F-Score is unavailable for this company (insufficient history in source statements).'
           : 'Piotroski F-Score (0–9) from annual standalone statements.',
     },
-    { label: 'Div. Yield', value: formatPct(view.dividendYield, 2), tone: getMetricStatus('dividendYield', view.dividendYield) },
     { label: 'D/E', value: view.debtToEquity != null ? view.debtToEquity.toFixed(2) : '—', tone: getMetricStatus('debtToEquity', view.debtToEquity) },
-    { label: 'Working Capital (CCC)', value: workingCapital != null ? `${formatNum(workingCapital, 0)} days` : '—', tone: cccTone, title: workingCapitalTitle },
+    { label: 'WC (CCC)', value: workingCapital != null ? `${formatNum(workingCapital, 0)} days` : '—', tone: cccTone, title: workingCapitalTitle },
+    { label: 'Revenue', value: formatCr(view.revenue), tone: 'neutral' },
+    { label: 'Net Profit', value: formatCr(view.netProfit), tone: 'neutral' },
+    { label: 'Debt / Assets', value: view.debtToAssets != null ? view.debtToAssets.toFixed(2) : '—', tone: getMetricStatus('debtToAssets', view.debtToAssets) },
+    { label: '52W High', value: formatInr(view.high, 0), tone: 'neutral' },
+    { label: '52W Low', value: formatInr(view.low, 0), tone: 'neutral' },
+    { label: 'Upside', value: formatPct(view.valuation.upside), tone: getMetricStatus('upside', view.valuation.upside) },
+    { label: 'Sales YoY', value: formatPct(view.salesYoy), tone: getMetricStatus('salesGrowth', view.salesYoy) },
+    { label: 'Profit YoY', value: formatPct(view.profitYoy), tone: getMetricStatus('profitGrowth', view.profitYoy) },
   ]
 
   return (
@@ -704,7 +722,7 @@ export default async function StockPage({ params, searchParams }: Props) {
 
           <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
             {metrics.map((metric) => (
-              <Kpi key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
+              <Kpi key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} title={metric.title} />
             ))}
           </section>
 
@@ -757,6 +775,9 @@ export default async function StockPage({ params, searchParams }: Props) {
           </section>
 
           <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <Card title="Price & Volume Trend" className="lg:col-span-3">
+              <PriceVolumeChart symbol={view.symbol} />
+            </Card>
             <Card title="Quarterly Trend (₹ Cr)">
               <QuarterlyBarChart chart={quarterlyChart} />
             </Card>

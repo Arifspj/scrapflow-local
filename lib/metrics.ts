@@ -10,10 +10,13 @@ export type MetricTone = 'good' | 'warn' | 'bad' | 'info' | 'neutral'
 export type MetricKey =
   | 'roce'
   | 'roe'
+  | 'opm'
   | 'pe'
   | 'dividendYield'
   | 'debtToEquity'
+  | 'debtToAssets'
   | 'marginOfSafety'
+  | 'upside'
   | 'cfoPat'
   | 'salesGrowth'
   | 'profitGrowth'
@@ -30,10 +33,13 @@ type Benchmark = {
 export const METRIC_BENCHMARKS: Record<MetricKey, Benchmark> = {
   roce: { higherIsBetter: true, good: 20, warn: 12 },
   roe: { higherIsBetter: true, good: 15, warn: 10 },
+  opm: { higherIsBetter: true, good: 15, warn: 8 },
   pe: { higherIsBetter: false, good: 20, warn: 35 },
   dividendYield: { higherIsBetter: true, good: 1.5, warn: 0 },
   debtToEquity: { higherIsBetter: false, good: 0.5, warn: 1.5 },
+  debtToAssets: { higherIsBetter: false, good: 0.3, warn: 0.6 },
   marginOfSafety: { higherIsBetter: true, good: 15, warn: -10 },
+  upside: { higherIsBetter: true, good: 15, warn: 0 },
   cfoPat: { higherIsBetter: true, good: 1, warn: 0.6 },
   salesGrowth: { higherIsBetter: true, good: 15, warn: 0 },
   profitGrowth: { higherIsBetter: true, good: 15, warn: 0 },
