@@ -11,6 +11,8 @@ export type OppRow = {
   symbol: string
   company: string
   href: string
+  /** True when the symbol is a bare numeric source id (no verified ticker). */
+  numeric?: boolean
   /** Optional note shown under the ticker (e.g. unresolved numeric code). */
   symbolNote?: string | null
   cells: OppCell[]
@@ -111,9 +113,12 @@ export function OppTable({
             <tr key={row.symbol} className="border-b border-[#0f1f33] last:border-0 hover:bg-white/[0.03]">
               <td className="px-3 py-2">
                 <Link href={row.href} className="block">
-                  <span className="block font-semibold text-white hover:text-sky-300">{row.symbol}</span>
-                  <span className="block max-w-[220px] truncate text-[11px] text-slate-500">{row.company}</span>
-                  {row.symbolNote ? <span className="mt-0.5 block text-[10px] text-amber-500/80">{row.symbolNote}</span> : null}
+                  <span className="block max-w-[220px] truncate font-semibold text-white hover:text-sky-300">{row.company}</span>
+                  {row.numeric ? (
+                    <span className="block text-[11px] text-slate-500" title={row.symbolNote ?? undefined}>
+                      {row.symbol}
+                    </span>
+                  ) : null}
                 </Link>
               </td>
               {row.cells.map((cell, index) => (

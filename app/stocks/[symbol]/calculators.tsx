@@ -80,10 +80,10 @@ export function RoceCalculator({ roce }: { roce: number | null }) {
   const areaPath = `${linePath} L ${WIDTH - 4} ${BOTTOM} L 4 ${BOTTOM} Z`
   const markers = [0, 0.25, 0.5, 0.75, 1].map((frac) => ({
     frac,
-    x: 4 + frac * (WIDTH - 8),
-    y: yFor(valueAt(frac * years)),
+    x: Number((4 + frac * (WIDTH - 8)).toFixed(2)),
+    y: Number(yFor(valueAt(frac * years)).toFixed(2)),
   }))
-  const baseY = hasCurve ? yFor(pv) : BOTTOM
+  const baseY = Number((hasCurve ? yFor(pv) : BOTTOM).toFixed(2))
 
   const yearLabel = (frac: number) => `Yr ${Math.round(frac * years)}`
 

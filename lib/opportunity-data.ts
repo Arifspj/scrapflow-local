@@ -22,6 +22,8 @@ import { buildFlags, hasRiskInputs, type StockFlag } from '@/lib/stock-flags'
 import type { TurnaroundAssessment } from '@/lib/turnaround'
 import type { OwnershipTrend } from '@/lib/ownership'
 import { summarizeSectors, type SectorInput, type SectorSummary } from '@/lib/sector-map'
+import { classifySignal, scorePoints, upsidePoints, SIGNAL_BUY_POINTS, volumeSurgeAt } from '@/lib/trade-signal'
+import { fetchPriceHistory } from '@/lib/price-history'
 import {
   ageOfOpportunityCache,
   getInflightOpportunity,
@@ -86,6 +88,8 @@ export type OpportunityRow = {
   intrinsic: number | null
   /** True only when both a positive LTP and a valid intrinsic value exist. */
   valuationValid: boolean
+  /** Valuation upside % = (intrinsic − price) / price × 100, null when not computable. */
+  upside: number | null
   roce: number | null
   roe: number | null
   pe: number | null
@@ -144,6 +148,8 @@ export type OpportunityDashboard = {
   turnarounds: OpportunityRow[]
   ownershipMovers: OpportunityRow[]
   sectors: SectorSummary[]
+  /** Stocks whose score + valuation verdict is BUY (see lib/trade-signal.ts). */
+  buySignals: OpportunityRow[]
   /** Experimental multibagger shortlist, ranked by the versioned score. */
   multibagger: OpportunityRow[]
   multibaggerMeta: MultibaggerMeta
@@ -161,6 +167,72 @@ export function toDashboardView({ rows, ...view }: OpportunityDashboard): Opport
   void rows
   return view
 }
+
+/** How many BUY-signal rows the homepage section carries (ranked by upside). */
+export const BUY_SIGNAL_ROW_CAP = 200
+
+/** How long a volume-confirmed BUY list is reused before histories are re-read. */
+export const BUY_SIGNAL_TTL_MS = 30 * 60 * 1000
+
+/** How many price histories are fetched at once while confirming BUY signals. */
+const BUY_SIGNAL_FETCH_CONCURRENCY = 6
+
+type BuySignalMemo = { key: string; at: number; rows: OpportunityRow[] }
+let buySignalMemo: BuySignalMemo | null = null
+
+/** Run `worker` over `items` with at most `limit` in flight at a time, order kept. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await worker(items[index])
+    }
+  })
+  await Promise.all(runners)
+  return results
+}
+
+/**
+ * Stage 2 of the BUY screener: the homepage section shows the same verdict the
+ * stock-page chart draws — score + valuation + a volume-confirmation term — so
+ * every fundamental BUY candidate is re-checked against its price history and kept
+ * only while the full verdict is still BUY. A candidate with no usable history is
+ * dropped (strict).
+ *
+ * Volume only ever moves the verdict by one point, so a candidate whose
+ * score+valuation already totals more than the BUY threshold stays BUY whatever
+ * the volume does — only the exactly-borderline candidates need their history.
+ */
+async function confirmBuySignals(candidates: OpportunityRow[]): Promise<OpportunityRow[]> {
+  const results = await mapWithConcurrency(candidates, BUY_SIGNAL_FETCH_CONCURRENCY, async (row) => {
+    if (scorePoints(row.score) + upsidePoints(row.upside) > SIGNAL_BUY_POINTS) return row
+    const history = await fetchPriceHistory(row.symbol, { interval: '1d', range: '1y' })
+    if (!history) return null
+    const surge = volumeSurgeAt(history.points, history.points.length - 1)
+    return classifySignal(row.score, row.upside, surge) === 'BUY' ? row : null
+  })
+  return results.filter((row): row is OpportunityRow => row != null)
+}
+
+function buySignalKey(rows: OpportunityRow[]): string {
+  return rows.map((row) => `${row.symbol}:${row.score}:${row.upside}`).join('|')
+}
+
+/** Memoised volume confirmation so the homepage doesn't re-fetch on every render. */
+async function enrichBuySignals(candidates: OpportunityRow[]): Promise<OpportunityRow[]> {
+  if (!candidates.length) return candidates
+  const key = buySignalKey(candidates)
+  const now = Date.now()
+  if (buySignalMemo && buySignalMemo.key === key && now - buySignalMemo.at < BUY_SIGNAL_TTL_MS) {
+    return buySignalMemo.rows
+  }
+  const rows = await confirmBuySignals(candidates)
+  buySignalMemo = { key, at: now, rows }
+  return rows
+}
+
 
 function sectorOf(view: ReturnType<typeof buildStockView>): { sector: string | null; industry: string | null } {
   const links = view.industry ?? []
@@ -202,6 +274,7 @@ function toRow(stock: StockForRow, view: StockView, extras: ListExtras): Opportu
     price: view.price,
     intrinsic: view.valuation.intrinsic,
     valuationValid,
+    upside: valuationValid ? view.valuation.upside : null,
     roce: view.roce,
     roe: view.roe,
     pe: view.pe,
@@ -394,6 +467,14 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     .sort((a, b) => (b.mos ?? -Infinity) - (a.mos ?? -Infinity))
     .slice(0, 10)
 
+  // Homepage BUY screener, stage 1: the score + valuation verdict across every
+  // saved stock. Volume is not stored, so it is confirmed from price history in
+  // getOpportunityDashboard (see confirmBuySignals) before the section renders.
+  const buyCandidates = rankable
+    .filter((row) => classifySignal(row.score, row.upside, null) === 'BUY')
+    .sort((a, b) => (b.upside ?? -Infinity) - (a.upside ?? -Infinity) || (b.score ?? -Infinity) - (a.score ?? -Infinity))
+    .slice(0, BUY_SIGNAL_ROW_CAP)
+
   const redFlags = rankable
     .filter((row) => row.flags.length > 0)
     .sort((a, b) => {
@@ -458,6 +539,7 @@ async function buildDashboard(): Promise<OpportunityDashboard> {
     turnarounds,
     ownershipMovers,
     sectors,
+    buySignals: buyCandidates,
     multibagger,
     multibaggerMeta: {
       version: MULTIBAGGER_CURRENT_VERSION,
@@ -518,6 +600,7 @@ function emptyDashboard(): OpportunityDashboard {
     turnarounds: [],
     ownershipMovers: [],
     sectors: [],
+    buySignals: [],
     multibagger: [],
     multibaggerMeta: {
       version: MULTIBAGGER_CURRENT_VERSION,
@@ -529,7 +612,12 @@ function emptyDashboard(): OpportunityDashboard {
   }
 }
 
-export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
+/**
+ * The cached/loaded dashboard, before the BUY section's volume confirmation.
+ * Kept separate so the expensive per-row decode stays memoised by signature while
+ * the cheap(er) price-history confirmation can refresh on its own TTL.
+ */
+async function loadOpportunityDashboard(): Promise<OpportunityDashboard> {
   let signature: string | null = null
   try {
     signature = await dashboardSignature()
@@ -568,9 +656,21 @@ export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
   return task
 }
 
+/**
+ * The dashboard the app consumes. The heavy build is memoised on the database
+ * signature; the BUY section is then re-confirmed against price history on its own
+ * short TTL, so the section tracks the market without rebuilding every row.
+ */
+export async function getOpportunityDashboard(): Promise<OpportunityDashboard> {
+  const dashboard = await loadOpportunityDashboard()
+  const buySignals = await enrichBuySignals(dashboard.buySignals)
+  return { ...dashboard, buySignals }
+}
+
 /** Drop the memo on this instance; other instances notice through the signature. */
 export function clearOpportunityCache(): void {
   invalidateOpportunityCache()
+  buySignalMemo = null
 }
 
 type StockForRow = { symbol: string; companyName: string | null }

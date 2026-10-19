@@ -23,7 +23,7 @@ function lineSegments(
       }
       return
     }
-    current.push(`${xFor(index)},${yFor(value)}`)
+    current.push(`${xFor(index).toFixed(2)},${yFor(value).toFixed(2)}`)
   })
   if (current.length) segments.push(current.join(' '))
   return segments
@@ -161,7 +161,7 @@ export function ProfitLineChart({ chart }: { chart: ChartSeries | null }) {
             ))}
             {entry.values.map((value, index) =>
               value == null || !Number.isFinite(value) ? null : (
-                <circle key={index} cx={xFor(index)} cy={yFor(value)} r={active === index ? 3.2 : 2.4} fill={entry.color} />
+                <circle key={index} cx={Number(xFor(index).toFixed(2))} cy={Number(yFor(value).toFixed(2))} r={active === index ? 3.2 : 2.4} fill={entry.color} />
               ),
             )}
           </g>

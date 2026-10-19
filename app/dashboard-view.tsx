@@ -98,11 +98,12 @@ function whyText(row: OpportunityRow): string {
   return parts.length ? `Driven by: ${parts.join(', ')}. Evidence ${row.coveragePct}%.` : `Evidence ${row.coveragePct}%.`
 }
 
-function base(row: OpportunityRow): Pick<OppRow, 'symbol' | 'company' | 'href' | 'symbolNote'> {
+function base(row: OpportunityRow): Pick<OppRow, 'symbol' | 'company' | 'href' | 'numeric' | 'symbolNote'> {
   return {
     symbol: row.identity.label,
     company: row.company,
     href: row.href,
+    numeric: row.identity.numeric,
     symbolNote: row.identity.note,
   }
 }
@@ -187,6 +188,33 @@ function undervaluedRows(rows: OpportunityRow[]): OppRow[] {
       roceCell(row.roe),
       { text: row.pe == null ? DASH : row.pe.toLocaleString('en-IN', { maximumFractionDigits: 1 }), tone: 'neutral', title: 'Trailing P/E.' },
       { text: row.debtToEquity == null ? DASH : row.debtToEquity.toFixed(2), tone: 'neutral', title: 'Debt / Equity. Interpret with care for financial businesses.' },
+      { text: dateOnly(row.updatedAt), tone: 'neutral', title: `Financial data snapshot: ${row.dataPeriod ?? 'period not stated'}` },
+    ],
+  }))
+}
+
+const buySignalColumns: OppColumn[] = [
+  { label: 'Upside %', align: 'right' },
+  { label: 'Score', align: 'right' },
+  { label: 'MOS %', align: 'right' },
+  { label: 'Price ₹', align: 'right' },
+  { label: 'Fair value ₹', align: 'right' },
+  { label: 'ROCE', align: 'right' },
+  { label: 'Sector', text: true },
+  { label: 'Data as of', align: 'right' },
+]
+
+function buySignalsRows(rows: OpportunityRow[]): OppRow[] {
+  return rows.map((row) => ({
+    ...base(row),
+    cells: [
+      { ...pctCell(row.upside), title: 'Upside to fair value = (intrinsic − price) / price × 100.' },
+      { text: row.score == null ? DASH : `${row.score}`, tone: (row.score ?? 0) >= 70 ? 'good' : (row.score ?? 0) >= 50 ? 'warn' : 'bad', title: 'Classic quality score (0–100).' },
+      { ...pctCell(row.mos), title: 'Margin of safety = discount of price to the fair value (0% when the price is above fair value).' },
+      { text: fmt(row.price, 2), tone: 'neutral' },
+      { text: fmt(row.intrinsic, 2), tone: 'neutral', title: `Fair value (${row.valuationValid ? 'computed' : 'unavailable'}).` },
+      roceCell(row.roce),
+      { text: row.industry || row.sector || DASH },
       { text: dateOnly(row.updatedAt), tone: 'neutral', title: `Financial data snapshot: ${row.dataPeriod ?? 'period not stated'}` },
     ],
   }))
@@ -539,6 +567,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
 
   const { data } = state
   const { coverage } = data
+  const buySignals = data.buySignals ?? []
 
   return (
     <section className="space-y-3">
@@ -582,6 +611,21 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
       >
         <OppTable columns={radarColumns} rows={radarRows(data.radar)} initialSort={0} emptyLabel="No stock has enough saved fundamentals to rank yet." />
       </Section>
+
+      <section className="overflow-hidden rounded-xl border border-emerald-700/40 bg-[#091527]">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-[#152742] px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-white">BUY Signals</h3>
+            <p className="mt-0.5 text-[11px] text-slate-500">Every saved stock where the score + valuation + volume verdict is BUY — the same rule and price/volume confirmation the stock-page chart draws. Fundamental BUYs that price history doesn&apos;t confirm are dropped. Ranked by upside to fair value.</p>
+          </div>
+          <span className="text-[11px] font-medium text-emerald-400" aria-live="polite">{buySignals.length} names</span>
+        </div>
+        <div className="border-b border-[#0f1f33] bg-[#0a1728] px-4 py-2 text-[10px] leading-5 text-slate-500">
+          Verdict = Q-Scan score (≥70 strong, 50–69 middling, &lt;50 weak) + valuation upside (≥15% strong, ≥0% mild, ≤−15% rich). To reach BUY the two must combine to a strong total, so a strong score with a rich price, or a cheap price with a weak score, stays HOLD.
+          Volume confirmation is a chart-only extra (no per-stock volume is stored). A missing score or fair value can never produce a BUY. Research list — not investment advice.
+        </div>
+        <OppTable columns={buySignalColumns} rows={buySignalsRows(buySignals)} initialSort={0} emptyLabel="No saved stock currently passes the BUY rule with price/volume confirmation." />
+      </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Section title="Earnings Acceleration" subtitle="Current vs comparable prior-period profit and sales, in ₹ Cr." count={`${data.earnings.length} names`}>

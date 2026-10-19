@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { classifySignal, volumeSurgeAt, type SignalLabel } from '@/lib/trade-signal'
 
 type Point = { time: string; open: number; high: number; low: number; close: number; volume: number }
 
@@ -47,7 +48,47 @@ function formatMonth(time: string): string {
 
 const TIME_TICKS = 5
 
-function Plot({ points }: { points: Point[] }) {
+type TradeSignal = { label: SignalLabel; tone: string; detail: string }
+type Marker = { index: number; label: 'BUY' | 'SELL' }
+
+function signalTone(label: SignalLabel): string {
+  if (label === 'BUY') return 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'
+  if (label === 'SELL') return 'border-rose-500/60 bg-rose-500/15 text-rose-300'
+  return 'border-slate-600/60 bg-slate-600/15 text-slate-300'
+}
+
+function deriveSignal(score: number | null, upside: number | null): TradeSignal | null {
+  if (score == null && upside == null) return null
+  const label = classifySignal(score, upside, null)
+  const parts: string[] = []
+  if (score != null) parts.push(`Score ${score}`)
+  if (upside != null) parts.push(`Upside ${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%`)
+  return { label, tone: signalTone(label), detail: parts.join(' · ') }
+}
+
+/**
+ * Walks the price series and returns the points where the combined score/valuation
+ * (+ volume confirmation) verdict flips into BUY or SELL, so past entries are visible.
+ * Historical valuation is derived from the intrinsic value against each historical close.
+ */
+function analyzeHistory(points: Point[], score: number | null, intrinsic: number | null): Marker[] {
+  const markers: Marker[] = []
+  if (intrinsic == null || intrinsic <= 0 || points.length === 0) return markers
+
+  let previous: SignalLabel = 'HOLD'
+  for (let index = 0; index < points.length; index++) {
+    const close = points[index].close
+    const upside = close > 0 ? ((intrinsic - close) / close) * 100 : null
+    const surge = volumeSurgeAt(points, index)
+    const label = classifySignal(score, upside, surge)
+    if (label !== 'HOLD' && label !== previous) markers.push({ index, label })
+    previous = label
+  }
+
+  return markers
+}
+
+function Plot({ points, score, intrinsic }: { points: Point[]; score: number | null; intrinsic: number | null }) {
   const [active, setActive] = useState<number | null>(null)
 
   const width = 600
@@ -70,6 +111,7 @@ function Plot({ points }: { points: Point[] }) {
   const barWidth = Math.max((plotWidth / points.length) * 0.65, 0.6)
   const activeX = active == null ? 0 : xFor(active)
   const activePoint = active == null ? null : points[active]
+  const markers = analyzeHistory(points, score, intrinsic)
 
   const priceTicks = [maxPrice, minPrice + priceRange / 2, minPrice]
   const timeTicks = Array.from({ length: TIME_TICKS }, (_, index) => {
@@ -169,6 +211,29 @@ function Plot({ points }: { points: Point[] }) {
               <div className="text-slate-400">Vol {formatVolume(activePoint.volume)}</div>
             </div>
           )}
+
+          {markers.map((marker) => {
+            const point = points[marker.index]
+            const isBuy = marker.label === 'BUY'
+            return (
+              <div
+                key={`marker-${marker.index}`}
+                className="pointer-events-none absolute z-10"
+                style={{ left: `${(xFor(marker.index) / width) * 100}%`, top: `${(priceY(point.close) / height) * 100}%` }}
+                title={`${point.time} · ${marker.label} · ₹${formatPrice(point.close)} · Vol ${formatVolume(point.volume)}`}
+              >
+                <span
+                  className={`block whitespace-nowrap rounded border px-1 py-px font-mono text-[9px] font-bold shadow ${
+                    isBuy
+                      ? '-translate-x-1/2 translate-y-[45%] border-emerald-500/60 bg-emerald-500/20 text-emerald-300'
+                      : '-translate-x-1/2 -translate-y-[145%] border-rose-500/60 bg-rose-500/20 text-rose-300'
+                  }`}
+                >
+                  {isBuy ? '▲ BUY' : '▼ SELL'}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -207,15 +272,31 @@ function Plot({ points }: { points: Point[] }) {
           </span>
         </span>
       </div>
+
+      <p className="mt-1 text-[10px] leading-tight text-slate-500">
+        ▲/▼ markers = historical points where the score + valuation (intrinsic vs. price) and volume verdict flipped into BUY/SELL.
+      </p>
     </div>
   )
 }
 
-export function PriceVolumeChart({ symbol }: { symbol: string }) {
+export function PriceVolumeChart({
+  symbol,
+  score,
+  upside,
+  intrinsic,
+}: {
+  symbol: string
+  score: number | null
+  upside: number | null
+  intrinsic: number | null
+}) {
   const [frame, setFrame] = useState(1)
   const [points, setPoints] = useState<Point[] | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const signal = deriveSignal(score, upside)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -248,7 +329,14 @@ export function PriceVolumeChart({ symbol }: { symbol: string }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-slate-500">Price (line) with volume (histogram)</span>
+        <span className="flex items-center gap-2 text-[11px] text-slate-500">
+          <span>Price (line) with volume (histogram)</span>
+          {signal && (
+            <span className={`rounded border px-1.5 py-0.5 font-mono text-[11px] font-bold ${signal.tone}`} title={signal.detail}>
+              {signal.label}
+            </span>
+          )}
+        </span>
         <div className="flex gap-1">
           {TIMEFRAMES.map((item, index) => (
             <button
@@ -277,7 +365,7 @@ export function PriceVolumeChart({ symbol }: { symbol: string }) {
           Not enough price history to plot yet.
         </p>
       ) : (
-        <Plot points={points} />
+        <Plot points={points} score={score} intrinsic={intrinsic} />
       )}
     </div>
   )

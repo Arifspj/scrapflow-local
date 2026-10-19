@@ -93,6 +93,37 @@ when prompted (it is stored in your browser's `localStorage` only). Then:
 Once imported, the scanner card on the homepage shows the number of persisted members,
 and `/?scanner=<name>` renders the results table.
 
+## Share a live preview (Cloudflare tunnel)
+
+Want a friend to open the running app from anywhere? Cloudflare's **Quick Tunnel** puts
+your local dev server on a throwaway public `https://…trycloudflare.com` URL — no
+account, no config.
+
+1. With the dev server running on port **3001** (`pnpm dev -- -p 3001`; see
+   [docs/local-dev.md](docs/local-dev.md)), start the tunnel in a second terminal:
+
+   ```bash
+   pnpm tunnel        # or: npm run tunnel
+   ```
+
+   This runs `cloudflared tunnel --url http://localhost:3001`.
+
+2. Cloudflare prints a box in the terminal with your public URL — the
+   `https://[random-words].trycloudflare.com` line. That is the link to share.
+
+3. Open it in a browser (or send it to a friend); it serves the same UI as
+   `http://localhost:3001`.
+
+Notes:
+
+- Needs the `cloudflared` CLI on your `PATH`. Install it once with
+  `winget install --id Cloudflare.cloudflared` (Windows) or
+  `brew install cloudflared` (macOS) — see the
+  [official download page](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+- The URL is temporary: it changes on every run and stops working when you close the
+  command. Anyone with the link can reach your app, so treat it as public — the local
+  dev database it reads is your own scratch data.
+
 ## Scripts
 
 | Command | What it does |
@@ -100,6 +131,7 @@ and `/?scanner=<name>` renders the results table.
 | `pnpm dev` | Start the dev server |
 | `pnpm build` | Production build |
 | `pnpm start` | Serve the production build |
+| `pnpm tunnel` | Expose the local dev server at `:3001` via a Cloudflare Quick Tunnel |
 | `pnpm db:deploy` | Apply pending Prisma migrations |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Run the Vitest suite |

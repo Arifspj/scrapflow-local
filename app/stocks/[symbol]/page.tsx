@@ -776,7 +776,12 @@ export default async function StockPage({ params, searchParams }: Props) {
 
           <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Card title="Price & Volume Trend" className="lg:col-span-3">
-              <PriceVolumeChart symbol={view.symbol} />
+              <PriceVolumeChart
+                symbol={view.symbol}
+                score={view.score}
+                upside={view.valuation.upside}
+                intrinsic={view.valuation.intrinsic}
+              />
             </Card>
             <Card title="Quarterly Trend (₹ Cr)">
               <QuarterlyBarChart chart={quarterlyChart} />
